@@ -206,7 +206,6 @@ void compute_sign(const GEO::Mesh &M,
 		const double spacing = voxels.spacing();
 
 		GEO::parallel_for([&](int x) {
-			std::cout << GEO::Thread::current()->id() << std::endl;
 			if (GEO::Thread::current()->id() == 0) {
 				task.progress((int) (100.0 * x / size[0] * GEO::Process::number_of_cores()));
 			}
@@ -289,8 +288,8 @@ int main(int argc, char** argv) {
 
 	// Display input and output filenames.
 	GEO::Logger::div("Command line");
-	GEO::Logger::out("MeshVox") << "Input file: " << filenames[0] << std::endl;
-	GEO::Logger::out("MeshVox") << "Output file: " << filenames[1] << std::endl;
+	GEO::Logger::out("VoxMesh") << "Input file: " << filenames[0] << std::endl;
+	GEO::Logger::out("VoxMesh") << "Output file: " << filenames[1] << std::endl;
 
 	// Declare a mesh.
 	GEO::Mesh M;

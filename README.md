@@ -7,4 +7,4 @@ A collection of small utilities made using the [geogram](http://alice.loria.fr/s
 TODO
 ----
 
-- [ ] __MeshVox__: Add option to select explicitly the number of target voxels (max extent).
+- [ ] __VoxMesh__: Add option to select explicitly the number of target voxels (max extent).
