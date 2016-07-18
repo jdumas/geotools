@@ -95,9 +95,9 @@ VoxelGrid::VoxelGrid(GEO::vec3 origin, GEO::vec3 extent, double spacing, int pad
 	, m_spacing(spacing)
 {
 	m_origin -= padding * spacing * GEO::vec3(1, 1, 1);
-	m_grid_size[0] = (int) std::floor(extent[0] / spacing) + 2 * padding;
-	m_grid_size[1] = (int) std::floor(extent[1] / spacing) + 2 * padding;
-	m_grid_size[2] = (int) std::floor(extent[2] / spacing) + 2 * padding;
+	m_grid_size[0] = (int) std::ceil(extent[0] / spacing) + 2 * padding;
+	m_grid_size[1] = (int) std::ceil(extent[1] / spacing) + 2 * padding;
+	m_grid_size[2] = (int) std::ceil(extent[2] / spacing) + 2 * padding;
 	GEO::Logger::out("Voxels") << "Grid size: "
 		<< m_grid_size[0] << " x " << m_grid_size[1] << " x " << m_grid_size[2] << std::endl;
 	m_data.assign(m_grid_size[0] * m_grid_size[1] * m_grid_size[2], 1.0f);
@@ -215,8 +215,8 @@ void compute_sign(const GEO::Mesh &M,
 				GEO::Box box;
 				box.xyz_min[0] = box.xyz_max[0] = center[0];
 				box.xyz_min[1] = box.xyz_max[1] = center[1];
-				box.xyz_min[2] = min_corner[2];
-				box.xyz_max[2] = max_corner[2];
+				box.xyz_min[2] = min_corner[2] - spacing;
+				box.xyz_max[2] = max_corner[2] + spacing;
 
 				std::vector<double> inter;
 				auto action = [&M, &inter, &center] (GEO::index_t f) {
@@ -231,11 +231,12 @@ void compute_sign(const GEO::Mesh &M,
 				for (size_t k = 1; k < inter.size(); k += 2) {
 					int z1 = int(std::round((inter[k-1] - origin[2])/spacing));
 					int z2 = int(std::round((inter[k] - origin[2])/spacing));
+					z1 = std::max(0, std::min(z1, size[2]));
+					z2 = std::max(0, std::min(z2, size[2]));
 					for (int z = z1; z < z2; ++z) {
-						if (z >= 0 && z < size[2]) {
-							const int idx = voxels.index_from_index3({{x, y, z}});
-							voxels.at(idx) *= -1.0f;
-						}
+						geo_assert(z >= 0 && z < size[2]);
+						const int idx = voxels.index_from_index3({{x, y, z}});
+						voxels.at(idx) *= -1.0f;
 					}
 				}
 			}
@@ -274,8 +275,9 @@ int main(int argc, char** argv) {
 
 	// Import standard command line arguments, and custom ones.
 	GEO::CmdLine::import_arg_group("standard");
-	GEO::CmdLine::declare_arg("padding", 2, "number of padded grid cells");
-	GEO::CmdLine::declare_arg("resolution", 1.0, "size of a voxel (in mm)");
+	GEO::CmdLine::declare_arg("padding", 0, "Number of padded grid cells");
+	GEO::CmdLine::declare_arg("resolution", 1.0, "Size of a voxel (in mm)");
+	GEO::CmdLine::declare_arg("numvoxels", -1, "Number of voxels along the longest axis");
 
 	// Parse command line options and filenames.
 	std::vector<std::string> filenames;
@@ -283,8 +285,9 @@ int main(int argc, char** argv) {
 		return 1;
 	}
 
-	int padding = std::max(1, GEO::CmdLine::get_arg_int("padding"));
+	int padding = std::max(0, GEO::CmdLine::get_arg_int("padding"));
 	double voxel_size = GEO::CmdLine::get_arg_double("resolution");
+	int num_voxels = GEO::CmdLine::get_arg_int("numvoxels");
 
 	// Default output filename is "output" if unspecified.
 	if(filenames.size() == 1) {
@@ -312,7 +315,13 @@ int main(int argc, char** argv) {
 	// Initialize voxel grid and AABB tree
 	GEO::vec3 min_corner, max_corner;
 	GEO::get_bbox(M, &min_corner[0], &max_corner[0]);
-	VoxelGrid voxels(min_corner, max_corner - min_corner, voxel_size, padding);
+	GEO::vec3 extent = max_corner - min_corner;
+	if (num_voxels > 0) {
+		// Force number of voxels along longest axis
+		double max_extent = std::max(extent[0], std::max(extent[1], extent[2]));
+		voxel_size = max_extent / num_voxels;
+	}
+	VoxelGrid voxels(min_corner, extent, voxel_size, padding);
 	GEO::MeshFacetsAABB aabb_tree(M);
 
 	// Compute inside/outside info
