@@ -240,6 +240,11 @@ void compute_sign(const GEO::Mesh &M,
 				}
 			}
 		}, 0, size[0]);
+
+		for (int idx = 0; idx < voxels.num_voxels(); ++idx) {
+			// -1 is inside, +1 is outside
+			voxels.at(idx) = (voxels.at(idx) < 0 ? 1 : 0);
+		}
 	} catch(const GEO::TaskCanceled&) {
 		// Do early cleanup
 	}
