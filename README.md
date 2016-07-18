@@ -7,4 +7,4 @@ A collection of small utilities made using the [geogram](http://alice.loria.fr/s
 VoxMesh
 -------
 
-A simple voxelization program. It launches rays in the Z direction, and compute intersections with the input mesh. The computation is pretty fast even with an output grid of 1024. Results can be vizualised with Paraview. More output formats will (probably) come.
+A simple voxelization program, which takes a surface mesh as input.

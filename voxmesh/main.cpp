@@ -60,10 +60,11 @@
 
 typedef std::array<int, 3> Vec3i;
 
+template<typename T>
 class VoxelGrid {
 private:
 	// Member data
-	std::vector<float> m_data;
+	std::vector<T> m_data;
 	GEO::vec3 m_origin;
 	double m_spacing; // voxel size (in mm)
 	Vec3i m_grid_size;
@@ -83,14 +84,15 @@ public:
 
 	GEO::vec3 voxel_center(int x, int y, int z) const;
 
-	float & at(int idx) { return m_data[idx]; }
-	const float * rawbuf() const { return m_data.data(); }
-	float * raw_layer(int z) { return m_data.data() + z * m_grid_size[1] * m_grid_size[0]; }
+	T & at(int idx) { return m_data[idx]; }
+	const T * rawbuf() const { return m_data.data(); }
+	T * raw_layer(int z) { return m_data.data() + z * m_grid_size[1] * m_grid_size[0]; }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-VoxelGrid::VoxelGrid(GEO::vec3 origin, GEO::vec3 extent, double spacing, int padding)
+template<typename T>
+VoxelGrid<T>::VoxelGrid(GEO::vec3 origin, GEO::vec3 extent, double spacing, int padding)
 	: m_origin(origin)
 	, m_spacing(spacing)
 {
@@ -100,10 +102,11 @@ VoxelGrid::VoxelGrid(GEO::vec3 origin, GEO::vec3 extent, double spacing, int pad
 	m_grid_size[2] = (int) std::ceil(extent[2] / spacing) + 2 * padding;
 	GEO::Logger::out("Voxels") << "Grid size: "
 		<< m_grid_size[0] << " x " << m_grid_size[1] << " x " << m_grid_size[2] << std::endl;
-	m_data.assign(m_grid_size[0] * m_grid_size[1] * m_grid_size[2], 1.0f);
+	m_data.assign(m_grid_size[0] * m_grid_size[1] * m_grid_size[2], T(0));
 }
 
-GEO::vec3 VoxelGrid::voxel_center(int x, int y, int z) const {
+template<typename T>
+GEO::vec3 VoxelGrid<T>::voxel_center(int x, int y, int z) const {
 	GEO::vec3 pos;
 	pos[0] = (x + 0.5) * m_spacing;
 	pos[1] = (y + 0.5) * m_spacing;
@@ -111,7 +114,8 @@ GEO::vec3 VoxelGrid::voxel_center(int x, int y, int z) const {
 	return pos + m_origin;
 }
 
-Vec3i VoxelGrid::index3_from_index(int idx) const {
+template<typename T>
+Vec3i VoxelGrid<T>::index3_from_index(int idx) const {
 	return {{
 		idx % m_grid_size[0],
 		(idx / m_grid_size[0]) % m_grid_size[1],
@@ -119,7 +123,8 @@ Vec3i VoxelGrid::index3_from_index(int idx) const {
 	}};
 }
 
-int VoxelGrid::index_from_index3(Vec3i vx) const {
+template<typename T>
+int VoxelGrid<T>::index_from_index3(Vec3i vx) const {
 	return (vx[2] * m_grid_size[1] + vx[1]) * m_grid_size[0] + vx[0];
 }
 
@@ -191,8 +196,9 @@ bool intersect_ray_z(const GEO::Mesh &M, GEO::index_t f, const GEO::vec3 &q, dou
 
 // -----------------------------------------------------------------------------
 
+template<typename T>
 void compute_sign(const GEO::Mesh &M,
-	const GEO::MeshFacetsAABB &aabb_tree, VoxelGrid &voxels)
+	const GEO::MeshFacetsAABB &aabb_tree, VoxelGrid<T> &voxels)
 {
 	const Vec3i size = voxels.grid_size();
 
@@ -236,16 +242,11 @@ void compute_sign(const GEO::Mesh &M,
 					for (int z = z1; z < z2; ++z) {
 						geo_assert(z >= 0 && z < size[2]);
 						const int idx = voxels.index_from_index3({{x, y, z}});
-						voxels.at(idx) *= -1.0f;
+						voxels.at(idx) = T(1) - voxels.at(idx);
 					}
 				}
 			}
 		}, 0, size[0]);
-
-		for (int idx = 0; idx < voxels.num_voxels(); ++idx) {
-			// -1 is inside, +1 is outside
-			voxels.at(idx) = (voxels.at(idx) < 0 ? 1 : 0);
-		}
 	} catch(const GEO::TaskCanceled&) {
 		// Do early cleanup
 	}
@@ -253,17 +254,19 @@ void compute_sign(const GEO::Mesh &M,
 
 // -----------------------------------------------------------------------------
 
-void paraview_dump(std::string &basename, const VoxelGrid &voxels) {
+typedef unsigned char num_t;
+
+void paraview_dump(std::string &basename, const VoxelGrid<num_t> &voxels) {
 	Vec3i size = voxels.grid_size();
 
 	std::ofstream metafile(basename + ".mhd");
 	metafile << "ObjectType = Image\nNDims = 3\n"
 		<< "DimSize = " << size[0] << " " << size[1] << " " << size[2] << "\n"
-		<< "ElementType = MET_FLOAT\nElementDataFile = " + basename + ".raw\n";
+		<< "ElementType = MET_CHAR\nElementDataFile = " + basename + ".raw\n";
 	metafile.close();
 
 	std::ofstream rawfile(basename + ".raw", std::ios::binary);
-	rawfile.write(reinterpret_cast<const char*>(voxels.rawbuf ()), voxels.num_voxels() * sizeof(float));
+	rawfile.write(reinterpret_cast<const char*>(voxels.rawbuf ()), voxels.num_voxels() * sizeof(num_t));
 	rawfile.close();
 }
 
@@ -321,7 +324,7 @@ int main(int argc, char** argv) {
 		double max_extent = std::max(extent[0], std::max(extent[1], extent[2]));
 		voxel_size = max_extent / num_voxels;
 	}
-	VoxelGrid voxels(min_corner, extent, voxel_size, padding);
+	VoxelGrid<num_t> voxels(min_corner, extent, voxel_size, padding);
 	GEO::MeshFacetsAABB aabb_tree(M);
 
 	// Compute inside/outside info
