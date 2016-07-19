@@ -1,0 +1,2 @@
+- [ ] Use triangle orientation for in/out events.
+- [ ] Robust implementation? Raycast from 3 directions, and vote?
