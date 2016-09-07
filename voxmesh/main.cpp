@@ -55,35 +55,89 @@
 #include <geogram/mesh/mesh_io.h>
 #include <geogram/mesh/mesh_AABB.h>
 #include <algorithm>
+#include <array>
+#include <iterator>
 
 ////////////////////////////////////////////////////////////////////////////////
 
-typedef std::array<int, 3> Vec3i;
+bool endswith (std::string const &str, std::string const &ending) {
+	if (str.length() >= ending.length()) {
+		return (0 == str.compare(str.length() - ending.length(), ending.length(), ending));
+	} else {
+		return false;
+	}
+}
+
+template <typename Scalar, size_t Rows>
+inline std::ostream& operator<<(std::ostream &out, std::array<Scalar, Rows> v) {
+	out << "{";
+	if (!v.empty()) {
+		std::copy(v.begin(), v.end() - 1, std::ostream_iterator<Scalar>(out, "; "));
+		out << v.back();
+	}
+	out << "}";
+	return out;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+namespace Layout {
+
+	GEO::vec3i index3_from_index(int idx, GEO::vec3i size) {
+		return GEO::vec3i(
+			idx % size[0],
+			(idx / size[0]) % size[1],
+			(idx / size[0]) / size[1]
+		);
+	}
+
+	int index_from_index3(GEO::vec3i vx, GEO::vec3i size) {
+		return (vx[2] * size[1] + vx[1]) * size[0] + vx[0];
+	}
+
+}
+
+namespace GEO {
+
+	bool filename_has_supported_extension(const std::string &filename) {
+		std::vector<std::string> extensions;
+		GEO::MeshIOHandlerFactory::list_creators(extensions);
+		for (auto &ext : extensions) {
+			if (endswith(filename, ext)) {
+				return true;
+			}
+		}
+		return false;
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 template<typename T>
 class VoxelGrid {
 private:
 	// Member data
 	std::vector<T> m_data;
-	GEO::vec3 m_origin;
-	double m_spacing; // voxel size (in mm)
-	Vec3i m_grid_size;
+	GEO::vec3      m_origin;
+	double         m_spacing; // voxel size (in mm)
+	GEO::vec3i     m_grid_size;
 
 public:
 	// Interface
 	VoxelGrid(GEO::vec3 origin, GEO::vec3 extent, double voxel_size, int padding);
 
-	Vec3i grid_size() const { return m_grid_size; }
+	GEO::vec3i grid_size() const { return m_grid_size; }
 	int num_voxels() const { return m_grid_size[0] * m_grid_size[1]  * m_grid_size[2]; }
 
 	GEO::vec3 origin() const { return m_origin; }
 	double spacing() const { return m_spacing; }
 
-	Vec3i index3_from_index(int idx) const;
-	int index_from_index3(Vec3i vx) const;
+	GEO::vec3i index3_from_index(int idx) const { return Layout::index3_from_index(idx, m_grid_size); }
+	int index_from_index3(GEO::vec3i vx) const { return Layout::index_from_index3(vx, m_grid_size); }
 
 	GEO::vec3 voxel_center(int x, int y, int z) const;
 
+	const T at(int idx) const { return m_data[idx]; }
 	T & at(int idx) { return m_data[idx]; }
 	const T * rawbuf() const { return m_data.data(); }
 	T * raw_layer(int z) { return m_data.data() + z * m_grid_size[1] * m_grid_size[0]; }
@@ -112,20 +166,6 @@ GEO::vec3 VoxelGrid<T>::voxel_center(int x, int y, int z) const {
 	pos[1] = (y + 0.5) * m_spacing;
 	pos[2] = (z + 0.5) * m_spacing;
 	return pos + m_origin;
-}
-
-template<typename T>
-Vec3i VoxelGrid<T>::index3_from_index(int idx) const {
-	return {{
-		idx % m_grid_size[0],
-		(idx / m_grid_size[0]) % m_grid_size[1],
-		(idx / m_grid_size[0]) / m_grid_size[1],
-	}};
-}
-
-template<typename T>
-int VoxelGrid<T>::index_from_index3(Vec3i vx) const {
-	return (vx[2] * m_grid_size[1] + vx[1]) * m_grid_size[0] + vx[0];
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -200,7 +240,7 @@ template<typename T>
 void compute_sign(const GEO::Mesh &M,
 	const GEO::MeshFacetsAABB &aabb_tree, VoxelGrid<T> &voxels)
 {
-	const Vec3i size = voxels.grid_size();
+	const GEO::vec3i size = voxels.grid_size();
 
 	try {
 		GEO::ProgressTask task("Ray marching", 100);
@@ -211,11 +251,11 @@ void compute_sign(const GEO::Mesh &M,
 		const GEO::vec3 origin = voxels.origin();
 		const double spacing = voxels.spacing();
 
-		GEO::parallel_for([&](int x) {
+		GEO::parallel_for([&](int y) {
 			if (GEO::Thread::current()->id() == 0) {
-				task.progress((int) (100.0 * x / size[0] * GEO::Process::number_of_cores()));
+				task.progress((int) (100.0 * y / size[1] * GEO::Process::number_of_cores()));
 			}
-			for (int y = 0; y < size[1]; ++y) {
+			for (int x = 0; x < size[0]; ++x) {
 				GEO::vec3 center = voxels.voxel_center(x, y, 0);
 
 				GEO::Box box;
@@ -241,12 +281,12 @@ void compute_sign(const GEO::Mesh &M,
 					z2 = std::max(0, std::min(z2, size[2]));
 					for (int z = z1; z < z2; ++z) {
 						geo_assert(z >= 0 && z < size[2]);
-						const int idx = voxels.index_from_index3({{x, y, z}});
+						const int idx = voxels.index_from_index3(GEO::vec3i(x, y, z));
 						voxels.at(idx) = T(1) - voxels.at(idx);
 					}
 				}
 			}
-		}, 0, size[0]);
+		}, 0, size[1]);
 	} catch(const GEO::TaskCanceled&) {
 		// Do early cleanup
 	}
@@ -257,7 +297,7 @@ void compute_sign(const GEO::Mesh &M,
 typedef unsigned char num_t;
 
 void paraview_dump(std::string &basename, const VoxelGrid<num_t> &voxels) {
-	Vec3i size = voxels.grid_size();
+	GEO::vec3i size = voxels.grid_size();
 
 	std::ofstream metafile(basename + ".mhd");
 	metafile << "ObjectType = Image\nNDims = 3\n"
@@ -272,17 +312,114 @@ void paraview_dump(std::string &basename, const VoxelGrid<num_t> &voxels) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void triangle_mesh_dump(std::string &filename, const VoxelGrid<num_t> &voxels) {
+	using GEO::vec3i;
+
+	vec3i cell_size = voxels.grid_size();
+	vec3i node_size = cell_size + vec3i(1, 1, 1);
+	int num_cells = voxels.num_voxels();
+	int num_nodes = node_size[0] * node_size[1] * node_size[2];
+
+	// Create triangle list from voxel grid
+	GEO::vector<GEO::index_t> triangles;
+	for (int idx = 0; idx < num_cells; ++idx) {
+		vec3i pos = voxels.index3_from_index(idx);
+
+		// Skip empty voxels
+		if (voxels.at(idx) == num_t(0)) { continue; }
+
+		// Define corner index
+		std::array<GEO::index_t, 8> corners;
+		corners[0] = Layout::index_from_index3(pos + vec3i(0, 0, 0), node_size);
+		corners[1] = Layout::index_from_index3(pos + vec3i(1, 0, 0), node_size);
+		corners[2] = Layout::index_from_index3(pos + vec3i(1, 1, 0), node_size);
+		corners[3] = Layout::index_from_index3(pos + vec3i(0, 1, 0), node_size);
+		corners[4] = Layout::index_from_index3(pos + vec3i(0, 0, 1), node_size);
+		corners[5] = Layout::index_from_index3(pos + vec3i(1, 0, 1), node_size);
+		corners[6] = Layout::index_from_index3(pos + vec3i(1, 1, 1), node_size);
+		corners[7] = Layout::index_from_index3(pos + vec3i(0, 1, 1), node_size);
+
+		// Subroutine to emit a facet quad
+		auto check_facet = [&](int axis, int delta, int v1, int v2, int v3, int v4) {
+			// Compute neigh voxel position
+			vec3i neigh = pos;
+			neigh[axis] += delta;
+
+			// Check whether neigh voxel is empty
+			bool neigh_is_empty = false;
+			if (neigh[axis] < 0 || neigh[axis] >= cell_size[axis]) {
+				neigh_is_empty = true;
+			} else {
+				int neigh_idx = voxels.index_from_index3(neigh);
+				neigh_is_empty = (voxels.at(neigh_idx) == num_t(0));
+			}
+
+			// If neigh voxel is empty, emit triangle strip
+			if (neigh_is_empty) {
+				triangles.insert(triangles.end(), { corners[v1], corners[v2], corners[v3] });
+				triangles.insert(triangles.end(), { corners[v3], corners[v2], corners[v4] });
+			}
+		};
+
+		check_facet(0, -1, 0, 4, 3, 7); // leftFacet
+		check_facet(0,  1, 2, 6, 1, 5); // rightFacet
+		check_facet(1, -1, 1, 5, 0, 4); // frontFacet
+		check_facet(1,  1, 3, 7, 2, 6); // backFacet
+		check_facet(2, -1, 0, 1, 3, 2); // lowerFacet
+		check_facet(2,  1, 4, 5, 7, 6); // upperFacet
+	}
+
+	// Assign vertex id (and remap triangle list)
+	int num_vertices = 0;
+	std::vector<int> node_id(num_nodes, -1);
+	for (GEO::index_t &c : triangles) {
+		if (node_id[c] == -1) {
+			node_id[c] = num_vertices++;
+		}
+		c = node_id[c];
+	}
+
+	// Create Geogram mesh
+	GEO::Mesh M;
+	M.vertices.create_vertices(num_vertices);
+	for (int v = 0; v < num_nodes; ++v) {
+		if (node_id[v] != -1) {
+			vec3i pos = Layout::index3_from_index(v, node_size);
+			M.vertices.point(node_id[v]) = GEO::vec3(pos);
+		}
+	}
+	M.facets.assign_triangle_mesh(triangles, true);
+
+	// Connect facets
+	M.facets.connect();
+
+	// Rescale to unit box, and set min corner to 0
+	// TODO: Add option to normalize, or output original real-world positions
+	GEO::vec3 min_corner, max_corner;
+	GEO::get_bbox(M, &min_corner[0], &max_corner[0]);
+	GEO::vec3 extent = max_corner - min_corner;
+	double scaling = std::max(extent[0], std::max(extent[1], extent[2]));
+	for (int v = 0; v < M.vertices.nb(); ++v) {
+		M.vertices.point(v) = (M.vertices.point(v) - min_corner) / scaling;
+	}
+
+	// Save mesh
+	GEO::mesh_save(M, filename);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 int main(int argc, char** argv) {
-	// Initialize the Geogram library.
+	// Initialize the Geogram library
 	GEO::initialize();
 
-	// Import standard command line arguments, and custom ones.
+	// Import standard command line arguments, and custom ones
 	GEO::CmdLine::import_arg_group("standard");
 	GEO::CmdLine::declare_arg("padding", 0, "Number of padded grid cells");
 	GEO::CmdLine::declare_arg("resolution", 1.0, "Size of a voxel (in mm)");
 	GEO::CmdLine::declare_arg("numvoxels", -1, "Number of voxels along the longest axis");
 
-	// Parse command line options and filenames.
+	// Parse command line options and filenames
 	std::vector<std::string> filenames;
 	if(!GEO::CmdLine::parse(argc, argv, filenames, "in_mesh_file <out_voxel_file>")) {
 		return 1;
@@ -292,20 +429,20 @@ int main(int argc, char** argv) {
 	double voxel_size = GEO::CmdLine::get_arg_double("resolution");
 	int num_voxels = GEO::CmdLine::get_arg_int("numvoxels");
 
-	// Default output filename is "output" if unspecified.
+	// Default output filename is "output" if unspecified
 	if(filenames.size() == 1) {
 		filenames.push_back("output");
 	}
 
-	// Display input and output filenames.
+	// Display input and output filenames
 	GEO::Logger::div("Command line");
 	GEO::Logger::out("VoxMesh") << "Input file: " << filenames[0] << std::endl;
 	GEO::Logger::out("VoxMesh") << "Output file: " << filenames[1] << std::endl;
 
-	// Declare a mesh.
+	// Declare a mesh
 	GEO::Mesh M;
 
-	// Load the mesh and display timings.
+	// Load the mesh and display timings
 	GEO::Logger::div("Loading");
 	{
 		GEO::Stopwatch W("Load");
@@ -331,11 +468,15 @@ int main(int argc, char** argv) {
 	GEO::Logger::div("Voxelizing");
 	compute_sign(M, aabb_tree, voxels);
 
-	// Save voxel grid and display timings.
+	// Save voxel grid and display timings
 	GEO::Logger::div("Saving");
 	{
 		GEO::Stopwatch W("Save");
-		paraview_dump(filenames[1], voxels);
+		if (GEO::filename_has_supported_extension(filenames[1])) {
+			triangle_mesh_dump(filenames[1], voxels);
+		} else {
+			paraview_dump(filenames[1], voxels);
+		}
 	}
 
 	return 0;
