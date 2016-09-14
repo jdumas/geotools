@@ -61,12 +61,15 @@ int main(int argc, char** argv) {
 
 	// Import standard command line arguments, and custom ones
 	GEO::CmdLine::import_arg_group("standard");
+	GEO::CmdLine::declare_arg("extent", 1.0, "Maximum physical extent (in mm)");
 
 	// Parse command line options and filenames
 	std::vector<std::string> filenames;
 	if(!GEO::CmdLine::parse(argc, argv, filenames, "in_mesh_file <out_mesh_file>")) {
 		return 1;
 	}
+
+	double target_extent = GEO::CmdLine::get_arg_double("extent");
 
 	// Default output filename is "output" if unspecified
 	if(filenames.size() == 1) {
@@ -100,7 +103,7 @@ int main(int argc, char** argv) {
 	GEO::vec3 extent = max_corner - min_corner;
 	double scaling = std::max(extent[0], std::max(extent[1], extent[2]));
 	for (int v = 0; v < M.vertices.nb(); ++v) {
-		M.vertices.point(v) = (M.vertices.point(v) - min_corner) / scaling;
+		M.vertices.point(v) = target_extent * (M.vertices.point(v) - min_corner) / scaling;
 	}
 
 	// Save mesh

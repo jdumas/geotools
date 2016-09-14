@@ -354,19 +354,20 @@ void triangle_mesh_dump(std::string &filename, const VoxelGrid<num_t> &voxels) {
 				neigh_is_empty = (voxels.at(neigh_idx) == num_t(0));
 			}
 
-			// If neigh voxel is empty, emit triangle strip
+			// If neigh voxel is empty, emit triangle strips
 			if (neigh_is_empty) {
 				triangles.insert(triangles.end(), { corners[v1], corners[v2], corners[v3] });
 				triangles.insert(triangles.end(), { corners[v3], corners[v2], corners[v4] });
 			}
 		};
 
-		check_facet(0, -1, 0, 4, 3, 7); // leftFacet
-		check_facet(0,  1, 2, 6, 1, 5); // rightFacet
-		check_facet(1, -1, 1, 5, 0, 4); // frontFacet
-		check_facet(1,  1, 3, 7, 2, 6); // backFacet
-		check_facet(2, -1, 0, 1, 3, 2); // lowerFacet
-		check_facet(2,  1, 4, 5, 7, 6); // upperFacet
+		// Check adjacency and emit facets
+		check_facet(0, -1, 0, 4, 3, 7); // left facet
+		check_facet(0,  1, 2, 6, 1, 5); // right facet
+		check_facet(1, -1, 1, 5, 0, 4); // front facet
+		check_facet(1,  1, 3, 7, 2, 6); // back facet
+		check_facet(2, -1, 0, 1, 3, 2); // lower facet
+		check_facet(2,  1, 4, 5, 7, 6); // upper facet
 	}
 
 	// Assign vertex id (and remap triangle list)
