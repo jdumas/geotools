@@ -1,6 +1,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 #include "poisson_disk.hpp"
 #include "vec.h"
+#include "chrono.h"
 // -----------------------------------------------------------------------------
 #include <iostream>
 #include <fstream>
@@ -23,15 +24,25 @@ int main(int argc, char** argv) {
 		return 0;
 	}
 
+	Chrono timer("Timer");
+
 	Vec3d unit_box = Vec::constant<double, 3>(1);
 	double min_dist = std::stod(argv[1]);
-	std::vector<Vec3d> result;
 
 	std::cout << "- Initialization..." << std::endl;
 	Sampler3D sampler(min_dist, unit_box);
 
-	std::cout << "- Sampling..." << std::endl;
+	std::cout << "- Sampling (Naive)..." << std::endl;
+	std::vector<Vec3d> result_naive;
+	timer.tic();
+	sampler.naive(result_naive);
+	timer.toc();
+
+	std::cout << "- Sampling (Bridson)..." << std::endl;
+	std::vector<Vec3d> result;
+	timer.tic();
 	sampler.box(30, result);
+	timer.toc();
 
 	std::cout << "- Saving result..." << std::endl;
 	std::ofstream fout(argv[2]);

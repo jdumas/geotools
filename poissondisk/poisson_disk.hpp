@@ -289,7 +289,7 @@ void PoissonSampling<real_t, n>::naive(
 		// Test against existing neighbors
 		bool flag = false;
 		for (vXr q : result) {
-			if (sqDistance(newPoint, q) <= minSqDist) {
+			if (Vec::sqDistance(newPoint, q) <= minSqDist) {
 				flag = true;
 				break;
 			}

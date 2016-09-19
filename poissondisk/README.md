@@ -9,7 +9,7 @@ Usage
 
 Sample points in a unit box:
 
-    ./poisson_disk 0.1 out.xyz
+    ./poisson_disk 0.05 out.xyz
 
 Open result with Meshlab:
 
