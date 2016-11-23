@@ -5,7 +5,7 @@
 #include <iterator>
 ////////////////////////////////////////////////////////////////////////////////
 
-// A set of STL-friendly fixed size containers
+// STL-friendly fixed size containers
 
 typedef std::array<unsigned char, 2> Vec2b;
 typedef std::array<int,           2> Vec2i;

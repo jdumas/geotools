@@ -39,7 +39,6 @@ public:
 
 private:
 	static constexpr int maxContourTrials = 50;
-	static vXr generateInAnnulus(float r1, float r2);
 
 private:
 	const real_t m_MinDist;
@@ -51,7 +50,7 @@ public:
 	{ }
 
 	// Typically k = 30
-	void box(int k, std::vector<vXr> &result) const ;
+	void box(int k, std::vector<vXr> &result) const;
 	void domain(int k, const Domain &d, std::vector<vXr> &result) const;
 	void contour(const std::vector<vXr> &poly, std::vector<vXr> &result) const;
 	void subset(const std::vector<vXr> &soup, std::vector<vXr> &result) const;

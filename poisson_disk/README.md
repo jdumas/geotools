@@ -14,3 +14,9 @@ Sample points in a unit box:
 Open result with Meshlab:
 
     meshlab out.xyz
+
+
+Other Implementations
+---------------------
+
+- [Poisson Disk Points Generator](https://github.com/corporateshark/poisson-disk-generator) by Sergey Kosarevsky.
