@@ -45,6 +45,8 @@
 
 // A mesh file converter using Geogram.
 
+
+#include <geogram/basic/file_system.h>
 #include <geogram/basic/command_line.h>
 #include <geogram/basic/command_line_args.h>
 #include <geogram/basic/logger.h>
@@ -298,16 +300,22 @@ typedef unsigned char num_t;
 
 // -----------------------------------------------------------------------------
 
-void paraview_dump(std::string &basename, const VoxelGrid<num_t> &voxels) {
+void paraview_dump(std::string &filename, const VoxelGrid<num_t> &voxels) {
 	GEO::vec3i size = voxels.grid_size();
 
-	std::ofstream metafile(basename + ".mhd");
+	std::string extension = GEO::FileSystem::extension(filename);
+	std::string basename = GEO::FileSystem::base_name(filename, true);
+	if (!extension.empty() && extension[0] != '.') {
+		extension = "." + extension;
+	}
+	std::string outname = filename.substr(0, filename.size() - extension.size());
+	std::ofstream metafile(outname + ".mhd");
 	metafile << "ObjectType = Image\nNDims = 3\n"
 		<< "DimSize = " << size[0] << " " << size[1] << " " << size[2] << "\n"
 		<< "ElementType = MET_CHAR\nElementDataFile = " + basename + ".raw\n";
 	metafile.close();
 
-	std::ofstream rawfile(basename + ".raw", std::ios::binary);
+	std::ofstream rawfile(outname + ".raw", std::ios::binary);
 	rawfile.write(reinterpret_cast<const char*>(voxels.rawbuf ()), voxels.num_voxels() * sizeof(num_t));
 	rawfile.close();
 }
