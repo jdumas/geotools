@@ -65,15 +65,15 @@ int main(int argc, char** argv) {
 
 	// Parse command line options and filenames
 	std::vector<std::string> filenames;
-	if(!GEO::CmdLine::parse(argc, argv, filenames, "in_mesh_file <out_mesh_file>")) {
+	if (!GEO::CmdLine::parse(argc, argv, filenames, "in_mesh_file <out_mesh_file>")) {
 		return 1;
 	}
 
 	double target_extent = GEO::CmdLine::get_arg_double("extent");
 
 	// Default output filename is "output" if unspecified
-	if(filenames.size() == 1) {
-		filenames.push_back("output");
+	if (filenames.size() == 1) {
+		filenames.push_back("output.ply");
 	}
 
 	// Display input and output filenames
@@ -95,16 +95,38 @@ int main(int argc, char** argv) {
 	}
 
 	// Merge identical vertices
-	GEO::mesh_repair(M, GEO::MESH_REPAIR_COLOCATE);
+	// GEO::mesh_repair(M, GEO::MESH_REPAIR_COLOCATE);
 
 	// Rescale to unit box, and set min corner to 0
 	GEO::vec3 min_corner, max_corner;
 	GEO::get_bbox(M, &min_corner[0], &max_corner[0]);
 	GEO::vec3 extent = max_corner - min_corner;
 	double scaling = std::max(extent[0], std::max(extent[1], extent[2]));
-	for (int v = 0; v < M.vertices.nb(); ++v) {
-		M.vertices.point(v) = target_extent * (M.vertices.point(v) - min_corner) / scaling;
+	max_corner = min_corner + 0.5 * extent;
+
+	// -------------------------------------------------------------------------
+
+	GEO::Box bbox;
+	for (int i = 0; i < 3; ++i) {
+		bbox.xyz_min[i] = min_corner[i];
+		bbox.xyz_max[i] = max_corner[i];
 	}
+	GEO::vector<GEO::index_t> to_delete(M.facets.nb(), 0);
+	for (int f = 0; f < M.facets.nb(); ++f) {
+		for(GEO::index_t c = M.facets.corners_begin(f);
+			c < M.facets.corners_end(f); ++c)
+		{
+			GEO::vec3 pts = M.vertices.point(M.facet_corners.vertex(c));
+			if (! bbox.contains(pts)) {
+				to_delete[f] = 1;
+				break;
+			}
+		}
+	}
+
+	M.facets.delete_elements(to_delete, true);
+
+	// -------------------------------------------------------------------------
 
 	// Save mesh
 	GEO::Logger::div("Saving");

@@ -292,9 +292,11 @@ void compute_sign(const GEO::Mesh &M,
 	}
 }
 
-// -----------------------------------------------------------------------------
+////////////////////////////////////////////////////////////////////////////////
 
 typedef unsigned char num_t;
+
+// -----------------------------------------------------------------------------
 
 void paraview_dump(std::string &basename, const VoxelGrid<num_t> &voxels) {
 	GEO::vec3i size = voxels.grid_size();
@@ -310,7 +312,7 @@ void paraview_dump(std::string &basename, const VoxelGrid<num_t> &voxels) {
 	rawfile.close();
 }
 
-////////////////////////////////////////////////////////////////////////////////
+// -----------------------------------------------------------------------------
 
 void triangle_mesh_dump(std::string &filename, const VoxelGrid<num_t> &voxels) {
 	using GEO::vec3i;
