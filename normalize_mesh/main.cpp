@@ -102,29 +102,33 @@ int main(int argc, char** argv) {
 	GEO::get_bbox(M, &min_corner[0], &max_corner[0]);
 	GEO::vec3 extent = max_corner - min_corner;
 	double scaling = std::max(extent[0], std::max(extent[1], extent[2]));
+	for (int v = 0; v < M.vertices.nb(); ++v) {
+		M.vertices.point(v) = target_extent * (M.vertices.point(v) - min_corner) / scaling;
 	max_corner = min_corner + 0.5 * extent;
 
 	// -------------------------------------------------------------------------
+	// Extract submesh
+	// -------------------------------------------------------------------------
 
-	GEO::Box bbox;
-	for (int i = 0; i < 3; ++i) {
-		bbox.xyz_min[i] = min_corner[i];
-		bbox.xyz_max[i] = max_corner[i];
-	}
-	GEO::vector<GEO::index_t> to_delete(M.facets.nb(), 0);
-	for (int f = 0; f < M.facets.nb(); ++f) {
-		for(GEO::index_t c = M.facets.corners_begin(f);
-			c < M.facets.corners_end(f); ++c)
-		{
-			GEO::vec3 pts = M.vertices.point(M.facet_corners.vertex(c));
-			if (! bbox.contains(pts)) {
-				to_delete[f] = 1;
-				break;
-			}
-		}
-	}
+	// GEO::Box bbox;
+	// for (int i = 0; i < 3; ++i) {
+	// 	bbox.xyz_min[i] = min_corner[i];
+	// 	bbox.xyz_max[i] = max_corner[i];
+	// }
+	// GEO::vector<GEO::index_t> to_delete(M.facets.nb(), 0);
+	// for (int f = 0; f < M.facets.nb(); ++f) {
+	// 	for(GEO::index_t c = M.facets.corners_begin(f);
+	// 		c < M.facets.corners_end(f); ++c)
+	// 	{
+	// 		GEO::vec3 pts = M.vertices.point(M.facet_corners.vertex(c));
+	// 		if (! bbox.contains(pts)) {
+	// 			to_delete[f] = 1;
+	// 			break;
+	// 		}
+	// 	}
+	// }
 
-	M.facets.delete_elements(to_delete, true);
+	// M.facets.delete_elements(to_delete, true);
 
 	// -------------------------------------------------------------------------
 

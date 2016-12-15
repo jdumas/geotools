@@ -10,7 +10,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR})
 find_package(Geogram REQUIRED)
 
 add_executable(${PROJECT_NAME} main.cpp)
-target_link_libraries(${PROJECT_NAME} Geogram::geogram)
+target_link_libraries(${PROJECT_NAME} PRIVATE Geogram::geogram)
 
 set_target_properties(${PROJECT_NAME}
 	PROPERTIES
