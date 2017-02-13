@@ -104,6 +104,7 @@ int main(int argc, char** argv) {
 	double scaling = std::max(extent[0], std::max(extent[1], extent[2]));
 	for (int v = 0; v < M.vertices.nb(); ++v) {
 		M.vertices.point(v) = target_extent * (M.vertices.point(v) - min_corner) / scaling;
+	}
 	max_corner = min_corner + 0.5 * extent;
 
 	// -------------------------------------------------------------------------

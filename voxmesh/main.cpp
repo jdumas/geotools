@@ -145,7 +145,7 @@ public:
 	T * raw_layer(int z) { return m_data.data() + z * m_grid_size[1] * m_grid_size[0]; }
 };
 
-////////////////////////////////////////////////////////////////////////////////
+// -----------------------------------------------------------------------------
 
 template<typename T>
 VoxelGrid<T>::VoxelGrid(GEO::vec3 origin, GEO::vec3 extent, double spacing, int padding)
@@ -168,6 +168,56 @@ GEO::vec3 VoxelGrid<T>::voxel_center(int x, int y, int z) const {
 	pos[1] = (y + 0.5) * m_spacing;
 	pos[2] = (z + 0.5) * m_spacing;
 	return pos + m_origin;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+template<typename T>
+class DexelGrid {
+private:
+	// Member data
+	std::vector<std::vector<T> > m_data;
+	GEO::vec3      m_origin;
+	double         m_spacing; // voxel size (in mm)
+	GEO::vec2i     m_grid_size;
+
+public:
+	// Interface
+	DexelGrid(GEO::vec3 origin, GEO::vec3 extent, double voxel_size, int padding);
+
+	GEO::vec2i grid_size() const { return m_grid_size; }
+	int num_dexels() const { return m_grid_size[0] * m_grid_size[1]; }
+
+	GEO::vec3 origin() const { return m_origin; }
+	double spacing() const { return m_spacing; }
+
+	GEO::vec2 dexel_center(int x, int y) const;
+
+	const std::vector<T> & at(int x, int y) const { return m_data[x + m_grid_size[0]*y]; }
+	std::vector<T> & at(int x, int y) { return m_data[x + m_grid_size[0]*y]; }
+};
+
+// -----------------------------------------------------------------------------
+
+template<typename T>
+DexelGrid<T>::DexelGrid(GEO::vec3 origin, GEO::vec3 extent, double spacing, int padding)
+	: m_origin(origin)
+	, m_spacing(spacing)
+{
+	m_origin -= padding * spacing * GEO::vec3(1, 1, 1);
+	m_grid_size[0] = (int) std::ceil(extent[0] / spacing) + 2 * padding;
+	m_grid_size[1] = (int) std::ceil(extent[1] / spacing) + 2 * padding;
+	GEO::Logger::out("Voxels") << "Grid size: "
+		<< m_grid_size[0] << " x " << m_grid_size[1] << std::endl;
+	m_data.assign(m_grid_size[0] * m_grid_size[1], std::vector<T>(0));
+}
+
+template<typename T>
+GEO::vec2 DexelGrid<T>::dexel_center(int x, int y) const {
+	GEO::vec2 pos;
+	pos[0] = (x + 0.5) * m_spacing;
+	pos[1] = (y + 0.5) * m_spacing;
+	return pos + GEO::vec2(m_origin[0], m_origin[1]);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -287,6 +337,56 @@ void compute_sign(const GEO::Mesh &M,
 						voxels.at(idx) = T(1) - voxels.at(idx);
 					}
 				}
+			}
+		}, 0, size[1]);
+	} catch(const GEO::TaskCanceled&) {
+		// Do early cleanup
+	}
+}
+
+// -----------------------------------------------------------------------------
+
+template<typename T>
+void compute_sign(const GEO::Mesh &M,
+	const GEO::MeshFacetsAABB &aabb_tree, DexelGrid<T> &dexels)
+{
+	const GEO::vec2i size = dexels.grid_size();
+
+	try {
+		GEO::ProgressTask task("Ray marching", 100);
+
+		GEO::vec3 min_corner, max_corner;
+		GEO::get_bbox(M, &min_corner[0], &max_corner[0]);
+
+		const GEO::vec3 origin = dexels.origin();
+		const double spacing = dexels.spacing();
+
+		GEO::parallel_for([&](int y) {
+			if (GEO::Thread::current()->id() == 0) {
+				// task.progress((int) (100.0 * y / size[1] * GEO::Process::number_of_cores()));
+			}
+			for (int x = 0; x < size[0]; ++x) {
+				GEO::vec2 center_xy = dexels.dexel_center(x, y);
+				GEO::vec3 center(center_xy[0], center_xy[1], 0);
+
+				GEO::Box box;
+				box.xyz_min[0] = box.xyz_max[0] = center[0];
+				box.xyz_min[1] = box.xyz_max[1] = center[1];
+				box.xyz_min[2] = min_corner[2] - spacing;
+				box.xyz_max[2] = max_corner[2] + spacing;
+
+				std::vector<double> inter;
+				auto action = [&M, &inter, &center] (GEO::index_t f) {
+					double z;
+					if (intersect_ray_z(M, f, center, z)) {
+						inter.push_back(z);
+					}
+				};
+				aabb_tree.compute_bbox_facet_bbox_intersections(box, action);
+				std::sort(inter.begin(), inter.end());
+
+				dexels.at(x, y).resize(inter.size());
+				std::copy_n(inter.begin(), inter.size(), dexels.at(x, y).begin());
 			}
 		}, 0, size[1]);
 	} catch(const GEO::TaskCanceled&) {
@@ -418,6 +518,99 @@ void triangle_mesh_dump(std::string &filename, const VoxelGrid<num_t> &voxels) {
 	GEO::mesh_save(M, filename);
 }
 
+// -----------------------------------------------------------------------------
+
+void volume_mesh_dump(std::string &filename, const VoxelGrid<num_t> &voxels) {
+	using GEO::vec3i;
+
+	vec3i cell_dims = voxels.grid_size();
+	vec3i node_dims = cell_dims + vec3i(1, 1, 1);
+	int num_nodes = node_dims[0] * node_dims[1] * node_dims[2];
+
+	auto delta = [](int i) {
+		return vec3i((i & 1) ^ ((i >> 1) & 1), (i >> 1) & 1, (i >> 2) & 1);
+	};
+	auto inv_delta = [](vec3i u) {
+		return (u[1] ? 4*u[2] + 3 - u[0] : 4*u[2] + u[0]);
+	};
+	auto cell_corner_id = [&](int cell_id, int corner_id) {
+		auto pos = Layout::index3_from_index(cell_id, cell_dims);
+		pos += delta(corner_id);
+		return Layout::index_from_index3(pos, node_dims);
+	};
+
+	GEO::Mesh mesh;
+	mesh.vertices.create_vertices(num_nodes);
+	for (int idx = 0; idx < num_nodes; ++idx) {
+		vec3i posi = Layout::index3_from_index(idx, node_dims);
+		GEO::vec3 pos(posi[0], posi[1], posi[2]);
+		mesh.vertices.point(idx) = voxels.origin() + pos * voxels.spacing();
+	}
+
+	for (int cell_id = 0; cell_id < voxels.num_voxels(); ++cell_id) {
+		if (voxels.at(cell_id) >= 0.5) {
+			vec3i diff[8] = {
+				vec3i(0,0,0), vec3i(1,0,0), vec3i(0,1,0), vec3i(1,1,0),
+				vec3i(0,0,1), vec3i(1,0,1), vec3i(0,1,1), vec3i(1,1,1)
+			};
+			int v[8];
+			for (GEO::index_t lv = 0; lv < 8; ++lv) {
+				int corner_id = inv_delta(diff[lv]);
+				v[lv] = cell_corner_id(cell_id, corner_id);
+			}
+			mesh.cells.create_hex(v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7]);
+		}
+	}
+
+	mesh.cells.compute_borders();
+	mesh.cells.connect();
+	mesh.vertices.remove_isolated();
+
+	GEO::mesh_save(mesh, filename);
+}
+
+// -----------------------------------------------------------------------------
+
+template<typename T>
+void dexel_dump(std::string &filename, const DexelGrid<T> &dexels) {
+	using GEO::vec3;
+
+	GEO::Mesh mesh;
+
+	for (int y = 0; y < dexels.grid_size()[1]; ++y) {
+		for (int x = 0; x < dexels.grid_size()[0]; ++x) {
+			if (!dexels.at(x, y).empty()) {
+				GEO::vec3 xyz_min, xyz_max;
+				xyz_min[0] = dexels.origin()[0] + x * dexels.spacing();
+				xyz_min[1] = dexels.origin()[1] + y * dexels.spacing();
+				xyz_min[2] = dexels.at(x, y).front();
+				xyz_max[0] = dexels.origin()[0] + (x+1) * dexels.spacing();
+				xyz_max[1] = dexels.origin()[1] + (y+1) * dexels.spacing();
+				xyz_max[2] = dexels.at(x, y).back();
+				vec3 diff[8] = {
+					vec3(0,0,0), vec3(1,0,0), vec3(0,1,0), vec3(1,1,0),
+					vec3(0,0,1), vec3(1,0,1), vec3(0,1,1), vec3(1,1,1)
+				};
+				int v = mesh.vertices.nb();
+				for (int lv = 0; lv < 8; ++lv) {
+					for (int d = 0; d < 3; ++d) {
+						diff[lv][d] = xyz_min[d] + diff[lv][d] * (xyz_max[d] - xyz_min[d]);
+					}
+					diff[lv] += dexels.origin();
+					mesh.vertices.create_vertex(&diff[lv][0]);
+				}
+				mesh.cells.create_hex(v, v+1, v+2, v+3, v+4, v+5, v+6, v+7);
+			}
+		}
+	}
+
+	mesh.cells.compute_borders();
+	mesh.cells.connect();
+	mesh.vertices.remove_isolated();
+
+	GEO::mesh_save(mesh, filename);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 int main(int argc, char** argv) {
@@ -429,6 +622,8 @@ int main(int argc, char** argv) {
 	GEO::CmdLine::declare_arg("padding", 0, "Number of padded grid cells");
 	GEO::CmdLine::declare_arg("resolution", 1.0, "Size of a voxel (in mm)");
 	GEO::CmdLine::declare_arg("numvoxels", -1, "Number of voxels along the longest axis");
+	GEO::CmdLine::declare_arg("hexmesh", false, "Output a hex mesh of the voxelized data");
+	GEO::CmdLine::declare_arg("dexelize", false, "Dexelize the input model");
 
 	// Parse command line options and filenames
 	std::vector<std::string> filenames;
@@ -439,6 +634,8 @@ int main(int argc, char** argv) {
 	int padding = std::max(0, GEO::CmdLine::get_arg_int("padding"));
 	double voxel_size = GEO::CmdLine::get_arg_double("resolution");
 	int num_voxels = GEO::CmdLine::get_arg_int("numvoxels");
+	bool hexmesh = GEO::CmdLine::get_arg_bool("hexmesh");
+	bool dexelize = GEO::CmdLine::get_arg_bool("dexelize");
 
 	// Default output filename is "output" if unspecified
 	if(filenames.size() == 1) {
@@ -472,18 +669,31 @@ int main(int argc, char** argv) {
 		double max_extent = std::max(extent[0], std::max(extent[1], extent[2]));
 		voxel_size = max_extent / num_voxels;
 	}
-	VoxelGrid<num_t> voxels(min_corner, extent, voxel_size, padding);
 	GEO::MeshFacetsAABB aabb_tree(M);
+
+	// Dexelize the input mesh
+	if (dexelize) {
+		GEO::Logger::div("Dexelizing");
+		DexelGrid<double> dexels(min_corner, extent, voxel_size, padding);
+		compute_sign<double>(M, aabb_tree, dexels);
+
+		GEO::Logger::div("Saving");
+		dexel_dump(filenames[1], dexels);
+		return 0;
+	}
 
 	// Compute inside/outside info
 	GEO::Logger::div("Voxelizing");
+	VoxelGrid<num_t> voxels(min_corner, extent, voxel_size, padding);
 	compute_sign(M, aabb_tree, voxels);
 
 	// Save voxel grid and display timings
 	GEO::Logger::div("Saving");
 	{
 		GEO::Stopwatch W("Save");
-		if (GEO::filename_has_supported_extension(filenames[1])) {
+		if (hexmesh) {
+			volume_mesh_dump(filenames[1], voxels);
+		} else if (GEO::filename_has_supported_extension(filenames[1])) {
 			triangle_mesh_dump(filenames[1], voxels);
 		} else {
 			paraview_dump(filenames[1], voxels);
