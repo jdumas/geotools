@@ -476,7 +476,7 @@ void triangle_mesh_dump(std::string &filename, const VoxelGrid<num_t> &voxels) {
 		check_facet(0,  1, 2, 6, 1, 5); // right facet
 		check_facet(1, -1, 1, 5, 0, 4); // front facet
 		check_facet(1,  1, 3, 7, 2, 6); // back facet
-		check_facet(2, -1, 0, 1, 3, 2); // lower facet
+		check_facet(2, -1, 1, 0, 2, 3); // lower facet
 		check_facet(2,  1, 4, 5, 7, 6); // upper facet
 	}
 
@@ -579,14 +579,14 @@ void dexel_dump(std::string &filename, const DexelGrid<T> &dexels) {
 
 	for (int y = 0; y < dexels.grid_size()[1]; ++y) {
 		for (int x = 0; x < dexels.grid_size()[0]; ++x) {
-			if (!dexels.at(x, y).empty()) {
+			for (int i = 0; 2 * i < dexels.at(x, y).size(); ++i) {
 				GEO::vec3 xyz_min, xyz_max;
 				xyz_min[0] = dexels.origin()[0] + x * dexels.spacing();
 				xyz_min[1] = dexels.origin()[1] + y * dexels.spacing();
-				xyz_min[2] = dexels.at(x, y).front();
+				xyz_min[2] = dexels.at(x, y)[2*i+0];
 				xyz_max[0] = dexels.origin()[0] + (x+1) * dexels.spacing();
 				xyz_max[1] = dexels.origin()[1] + (y+1) * dexels.spacing();
-				xyz_max[2] = dexels.at(x, y).back();
+				xyz_max[2] = dexels.at(x, y)[2*i+1];
 				vec3 diff[8] = {
 					vec3(0,0,0), vec3(1,0,0), vec3(0,1,0), vec3(1,1,0),
 					vec3(0,0,1), vec3(1,0,1), vec3(0,1,1), vec3(1,1,1)
