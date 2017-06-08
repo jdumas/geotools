@@ -61,6 +61,7 @@ int main(int argc, char** argv) {
 
 	// Import standard command line arguments, and custom ones
 	GEO::CmdLine::import_arg_group("standard");
+	GEO::CmdLine::import_arg_group("pre");
 	GEO::CmdLine::declare_arg("extent", 1.0, "Maximum physical extent (in mm)");
 
 	// Parse command line options and filenames
@@ -95,7 +96,12 @@ int main(int argc, char** argv) {
 	}
 
 	// Merge identical vertices
-	// GEO::mesh_repair(M, GEO::MESH_REPAIR_COLOCATE);
+	if (GEO::CmdLine::get_arg_bool("pre:repair")) {
+		GEO::MeshRepairMode mode = GEO::MESH_REPAIR_COLOCATE;
+		double radius = bbox_diagonal(M);
+		double epsilon = GEO::CmdLine::get_arg_percent("pre:epsilon", radius);
+		mesh_repair(M, mode, epsilon);
+	}
 
 	// Rescale to unit box, and set min corner to 0
 	GEO::vec3 min_corner, max_corner;
