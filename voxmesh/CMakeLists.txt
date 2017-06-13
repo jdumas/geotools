@@ -9,8 +9,11 @@ endif()
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR})
 find_package(Geogram REQUIRED)
 
-add_executable(${PROJECT_NAME} main.cpp)
+add_executable(${PROJECT_NAME} main.cpp octree.cpp)
 target_link_libraries(${PROJECT_NAME} PRIVATE Geogram::geogram)
+
+find_package(Eigen3 REQUIRED)
+target_link_libraries(${PROJECT_NAME} PRIVATE Eigen3::Eigen)
 
 set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 11)
 set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD_REQUIRED ON)

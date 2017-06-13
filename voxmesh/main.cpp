@@ -46,6 +46,7 @@
 // A mesh file converter using Geogram.
 
 
+#include "octree.h"
 #include <geogram/basic/file_system.h>
 #include <geogram/basic/command_line.h>
 #include <geogram/basic/command_line_args.h>
@@ -613,6 +614,57 @@ void dexel_dump(std::string &filename, const DexelGrid<T> &dexels) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void compute_octree(const GEO::Mesh &M, const GEO::MeshFacetsAABB &aabb_tree,
+	const std::string &filename, GEO::vec3 min_corner, GEO::vec3 extent,
+	double spacing, int padding, bool graded)
+{
+	GEO::vec3 origin =  min_corner - padding * spacing * GEO::vec3(1, 1, 1);
+	Eigen::Vector3i grid_size(
+		std::ceil(extent[0] / spacing) + 2 * padding,
+		std::ceil(extent[1] / spacing) + 2 * padding,
+		std::ceil(extent[2] / spacing) + 2 * padding
+	);
+
+	OctreeGrid octree(grid_size);
+
+	// Subdivide cells
+	auto should_subdivide = [&](int x, int y, int z, int extent) {
+		if (extent == 1) { return false; }
+		GEO::Box box;
+		box.xyz_min[0] = origin[0] + spacing * x;
+		box.xyz_min[1] = origin[1] + spacing * y;
+		box.xyz_min[2] = origin[2] + spacing * z;
+		box.xyz_max[0] = box.xyz_min[0] + spacing * extent;
+		box.xyz_max[1] = box.xyz_min[1] + spacing * extent;
+		box.xyz_max[2] = box.xyz_min[2] + spacing * extent;
+		bool has_triangles = false;
+		auto action = [&has_triangles](int id) { has_triangles = true; };
+		aabb_tree.compute_bbox_facet_bbox_intersections(box, action);
+		return has_triangles;
+	};
+	octree.subdivide(should_subdivide, graded);
+
+	// Compute inside/outside info
+	{
+		Eigen::VectorXf & X = octree.cellAttributes.create<float>("inside");
+		X.setRandom();
+	}
+
+	// Export
+	GEO::Logger::div("Saving");
+	GEO::Mesh M_out;
+	{
+		Eigen::Vector3d o(origin[0], origin[1], origin[2]);
+		Eigen::Vector3d s(spacing, spacing, spacing);
+		GEO::Logger::out("OctreeGrid") << "Creating volume mesh" << std::endl;
+		octree.createMesh(M_out, o, s);
+	}
+
+	GEO::mesh_save(M_out, filename);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 int main(int argc, char** argv) {
 	// Initialize the Geogram library
 	GEO::initialize();
@@ -624,10 +676,12 @@ int main(int argc, char** argv) {
 	GEO::CmdLine::declare_arg("numvoxels", -1, "Number of voxels along the longest axis");
 	GEO::CmdLine::declare_arg("hexmesh", false, "Output a hex mesh of the voxelized data");
 	GEO::CmdLine::declare_arg("dexelize", false, "Dexelize the input model");
+	GEO::CmdLine::declare_arg("octree", false, "Generate an adaptive octree of the input model");
+	GEO::CmdLine::declare_arg("graded", false, "Should the octree be 2:1 graded");
 
 	// Parse command line options and filenames
 	std::vector<std::string> filenames;
-	if(!GEO::CmdLine::parse(argc, argv, filenames, "in_mesh_file <out_voxel_file>")) {
+	if (!GEO::CmdLine::parse(argc, argv, filenames, "input_mesh <output_file>")) {
 		return 1;
 	}
 
@@ -636,6 +690,8 @@ int main(int argc, char** argv) {
 	int num_voxels = GEO::CmdLine::get_arg_int("numvoxels");
 	bool hexmesh = GEO::CmdLine::get_arg_bool("hexmesh");
 	bool dexelize = GEO::CmdLine::get_arg_bool("dexelize");
+	bool octree = GEO::CmdLine::get_arg_bool("octree");
+	bool graded = GEO::CmdLine::get_arg_bool("graded");
 
 	// Default output filename is "output" if unspecified
 	if(filenames.size() == 1) {
@@ -679,6 +735,13 @@ int main(int argc, char** argv) {
 
 		GEO::Logger::div("Saving");
 		dexel_dump(filenames[1], dexels);
+		return 0;
+	}
+
+	// Compute an octree of the input mesh
+	if (octree) {
+		GEO::Logger::div("Octree");
+		compute_octree(M, aabb_tree, filenames[1], min_corner, extent, voxel_size, padding, graded);
 		return 0;
 	}
 
