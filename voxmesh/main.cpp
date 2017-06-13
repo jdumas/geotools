@@ -708,7 +708,7 @@ void compute_octree(const GEO::Mesh &M, const GEO::MeshFacetsAABB &aabb_tree,
 	{
 		Eigen::Vector3d o(origin[0], origin[1], origin[2]);
 		Eigen::Vector3d s(spacing, spacing, spacing);
-		GEO::Logger::out("OctreeGrid") << "Creating volume mesh" << std::endl;
+		GEO::Logger::out("OctreeGrid") << "Creating volume mesh..." << std::endl;
 		octree.createMesh(M_out, o, s);
 	}
 

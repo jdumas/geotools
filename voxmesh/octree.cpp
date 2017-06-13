@@ -639,8 +639,10 @@ void OctreeGrid::createMesh(
 	}
 
 	// logger_debug("OctreeGrid", "createMesh(): Connecting cells");
-	mesh.cells.compute_borders();
-	mesh.cells.connect();
+	//GEO::Logger::out("OctreeGrid") << "Computing borders..." << std::endl;
+	//mesh.cells.compute_borders();
+	//GEO::Logger::out("OctreeGrid") << "Connecting cells..." << std::endl;
+	//mesh.cells.connect();
 
 	// logger_debug("OctreeGrid", "createMesh(): Creating attributes...");
 	updateMeshAttributes(mesh);
