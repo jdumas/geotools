@@ -395,6 +395,61 @@ void compute_sign(const GEO::Mesh &M,
 	}
 }
 
+// -----------------------------------------------------------------------------
+
+void compute_sign(const GEO::Mesh &M, const GEO::MeshFacetsAABB &aabb_tree,
+	OctreeGrid &octree, GEO::vec3 origin, double spacing)
+{
+	Eigen::VectorXf & inside = octree.cellAttributes.create<float>("inside");
+	inside.setZero();
+
+	try {
+		GEO::ProgressTask task("Ray marching", 100);
+
+		GEO::vec3 min_corner, max_corner;
+		GEO::get_bbox(M, &min_corner[0], &max_corner[0]);
+
+		GEO::parallel_for([&](int cellId) {
+			auto cell_xyz_min = octree.cellCornerPos(cellId, OctreeGrid::CORNER_X0_Y0_Z0);
+			auto extent = octree.cellExtent(cellId);
+
+			GEO::Box box;
+			box.xyz_min[0] = origin[0] + spacing * cell_xyz_min[0];
+			box.xyz_min[1] = origin[1] + spacing * cell_xyz_min[1];
+			box.xyz_max[0] = box.xyz_min[0] + spacing * extent;
+			box.xyz_max[1] = box.xyz_min[1] + spacing * extent;
+			box.xyz_min[2] = min_corner[2] - spacing;
+			box.xyz_max[2] = max_corner[2] + spacing;
+
+			GEO::vec3 center(
+				box.xyz_min[0] + 0.5 * spacing * extent,
+				box.xyz_min[1] + 0.5 * spacing * extent,
+				origin[2] + spacing * cell_xyz_min[2] + 0.5 * spacing * extent
+			);
+
+			std::vector<double> inter;
+			auto action = [&M, &inter, &center] (GEO::index_t f) {
+				double z;
+				if (intersect_ray_z(M, f, center, z)) {
+					inter.push_back(z);
+				}
+			};
+			aabb_tree.compute_bbox_facet_bbox_intersections(box, action);
+			//std::sort(inter.begin(), inter.end());
+
+			int num_before = 0;
+			for (double z : inter) {
+				if (z < center[2]) { ++num_before; }
+			}
+			if (num_before % 2 == 1) {
+				inside(cellId) = 1.0;
+			}
+		}, 0, octree.numCells());
+	} catch(const GEO::TaskCanceled&) {
+		// Do early cleanup
+	}
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 typedef unsigned char num_t;
@@ -645,10 +700,7 @@ void compute_octree(const GEO::Mesh &M, const GEO::MeshFacetsAABB &aabb_tree,
 	octree.subdivide(should_subdivide, graded);
 
 	// Compute inside/outside info
-	{
-		Eigen::VectorXf & X = octree.cellAttributes.create<float>("inside");
-		X.setRandom();
-	}
+	compute_sign(M, aabb_tree, octree, origin, spacing);
 
 	// Export
 	GEO::Logger::div("Saving");

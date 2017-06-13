@@ -23,7 +23,7 @@ public:
 	AttributeManager nodeAttributes;
 	AttributeManager cellAttributes;
 
-private:
+public:
 	///////////////////////
 	// Numbering aliases //
 	///////////////////////

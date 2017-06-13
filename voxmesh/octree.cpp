@@ -649,20 +649,20 @@ void OctreeGrid::createMesh(
 ////////////////////////////////////////////////////////////////////////////////
 
 // Shortcut macro to make life easier
-#define CHECK_TYPE(T, id, name, grid, mesh, dim)                   \
+#define CHECK_TYPE(T, id, name, grid, mesh, cth)                   \
 	do {                                                           \
 		if ((id) == std::type_index(typeid(T))) {                  \
-			setGeogramAttribute<T>((name), (grid), (mesh), (dim)); \
+			setGeogramAttribute<T>((name), (grid), (mesh), (cth)); \
 			return;                                                \
 		}                                                          \
 	} while (0)
 
-#define CHECK_ALL_TYPE(id, name, grid, mesh, dim)        \
+#define CHECK_ALL_TYPE(id, name, grid, mesh, cth)        \
 	do {                                                 \
-		CHECK_TYPE(unsigned, id, name, grid, mesh, dim); \
-		CHECK_TYPE(int, id, name, grid, mesh, dim);      \
-		CHECK_TYPE(float, id, name, grid, mesh, dim);    \
-		CHECK_TYPE(double, id, name, grid, mesh, dim);   \
+		CHECK_TYPE(unsigned, id, name, grid, mesh, cth); \
+		CHECK_TYPE(int, id, name, grid, mesh, cth);      \
+		CHECK_TYPE(float, id, name, grid, mesh, cth);    \
+		CHECK_TYPE(double, id, name, grid, mesh, cth);   \
 	} while (0)
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -672,24 +672,28 @@ namespace {
 // -----------------------------------------------------------------------------
 
 template<typename T>
-void setGeogramAttribute(const std::string &name, const OctreeGrid &grid, GEO::Mesh &mesh, int dim) {
+void setGeogramAttribute(const std::string &name, const OctreeGrid &grid, GEO::Mesh &mesh,
+	const std::vector<int> &cellToHex)
+{
 	typedef Eigen::Matrix<T, Eigen::Dynamic, 1> VectorT;
-	assert(dim == 3);
 
 	const VectorT &gridCellAttr = grid.cellAttributes.get<T>(name);
 	GEO::Attribute<T> meshCellAttr(mesh.cells.attributes(), name);
-	assert(gridCellAttr.size() == mesh.cells.nb());
 
-	for (GEO::index_t f = 0; f < mesh.cells.nb(); ++f) {
-		meshCellAttr[f] = gridCellAttr(f);
+	for (size_t q = 0; q < cellToHex.size(); ++q) {
+		if (cellToHex[q] != -1) {
+			meshCellAttr[cellToHex[q]] = gridCellAttr(q);
+		}
 	}
 }
 
 // -----------------------------------------------------------------------------
 
-void setGeogramAttribute(const std::string &name, const OctreeGrid &grid, GEO::Mesh &mesh, int dim) {
+void setGeogramAttribute(const std::string &name, const OctreeGrid &grid, GEO::Mesh &mesh,
+	const std::vector<int> &cellToHex)
+{
 	std::type_index id = grid.cellAttributes.type(name);
-	CHECK_ALL_TYPE(id, name, grid, mesh, dim);
+	CHECK_ALL_TYPE(id, name, grid, mesh, cellToHex);
 }
 
 // -----------------------------------------------------------------------------
@@ -700,8 +704,15 @@ void setGeogramAttribute(const std::string &name, const OctreeGrid &grid, GEO::M
 
 // Update attributes of a geogram mesh according to the current grid
 void OctreeGrid::updateMeshAttributes(GEO::Mesh &mesh) const {
+	// Map octree cell to hex in the final mesh (keeping only the leaves)
+	std::vector<int> cellToHex(numCells(), -1);
+	for (int q = 0, c = 0; q < numCells(); ++q) {
+		if (cellIsLeaf(q)) {
+			cellToHex[q] = c++;
+		}
+	}
 	for (auto name : cellAttributes.keys()) {
-		setGeogramAttribute(name, *this, mesh, dimension());
+		setGeogramAttribute(name, *this, mesh, cellToHex);
 	}
 }
 
