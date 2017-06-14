@@ -57,6 +57,7 @@
 #include <geogram/mesh/mesh_geometry.h>
 #include <geogram/mesh/mesh_io.h>
 #include <geogram/mesh/mesh_AABB.h>
+#include <geogram/numerics/predicates.h>
 #include <algorithm>
 #include <array>
 #include <iterator>
@@ -266,9 +267,49 @@ bool point_in_triangle_2d(
 	return true;
 }
 
+// -----------------------------------------------------------------------------
+
+// \brief Computes the (approximate) orientation predicate in 2d.
+// \details Computes the sign of the (approximate) signed volume of
+//  the triangle p0, p1, p2
+// \param[in] p0 first vertex of the triangle
+// \param[in] p1 second vertex of the triangle
+// \param[in] p2 third vertex of the triangle
+// \retval POSITIVE if the triangle is oriented positively
+// \retval ZERO if the triangle is flat
+// \retval NEGATIVE if the triangle is oriented negatively
+// \todo check whether orientation is inverted as compared to
+//   Shewchuk's version.
+inline GEO::Sign orient_2d_inexact(GEO::vec2 p0, GEO::vec2 p1, GEO::vec2 p2) {
+	double a11 = p1[0] - p0[0] ;
+	double a12 = p1[1] - p0[1] ;
+
+	double a21 = p2[0] - p0[0] ;
+	double a22 = p2[1] - p0[1] ;
+
+	double Delta = GEO::det2x2(
+		a11, a12,
+		a21, a22
+	);
+
+	return GEO::geo_sgn(Delta);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
-bool intersect_ray_z(const GEO::Mesh &M, GEO::index_t f, const GEO::vec3 &q, double &z) {
+
+/**
+ * @brief      { Intersect a vertical ray with a triangle }
+ *
+ * @param[in]  M     { Mesh containing the triangle to intersect }
+ * @param[in]  f     { Index of the facet to intersect }
+ * @param[in]  q     { Query point (only XY coordinates are used) }
+ * @param[out] z     { Intersection }
+ *
+ * @return     { description_of_the_return_value }
+ */
+template<int X = 0, int Y = 1, int Z = 2>
+int intersect_ray_z(const GEO::Mesh &M, GEO::index_t f, const GEO::vec3 &q, double &z) {
 	using namespace GEO;
 
 	index_t c = M.facets.corners_begin(f);
@@ -278,13 +319,18 @@ bool intersect_ray_z(const GEO::Mesh &M, GEO::index_t f, const GEO::vec3 &q, dou
 
 	double u, v, w;
 	if (point_in_triangle_2d(
-		q[0], q[1], p1[0], p1[1], p2[0], p2[1], p3[0], p3[1], u, v, w))
+		q[X], q[Y], p1[X], p1[Y], p2[X], p2[Y], p3[X], p3[Y], u, v, w))
 	{
-		z = u*p1[2] + v*p2[2] + w*p3[2];
-		return true;
+		z = u*p1[Z] + v*p2[Z] + w*p3[Z];
+		auto sign = orient_2d_inexact(vec2(p1[X], p1[Y]), vec2(p2[X], p2[Y]), vec2(p3[X], p3[Y]));
+		switch (sign) {
+		case GEO::POSITIVE: return 1;
+		case GEO::NEGATIVE: return -1;
+		default: return 0;
+		}
 	}
 
-	return false;
+	return 0;
 }
 
 // -----------------------------------------------------------------------------
@@ -317,26 +363,23 @@ void compute_sign(const GEO::Mesh &M,
 				box.xyz_min[2] = min_corner[2] - spacing;
 				box.xyz_max[2] = max_corner[2] + spacing;
 
-				std::vector<double> inter;
+				std::vector<std::pair<double, int>> inter;
 				auto action = [&M, &inter, &center] (GEO::index_t f) {
 					double z;
-					if (intersect_ray_z(M, f, center, z)) {
-						inter.push_back(z);
+					if (int s = intersect_ray_z(M, f, center, z)) {
+						inter.emplace_back(z, s);
 					}
 				};
 				aabb_tree.compute_bbox_facet_bbox_intersections(box, action);
 				std::sort(inter.begin(), inter.end());
 
-				for (size_t k = 1; k < inter.size(); k += 2) {
-					int z1 = int(std::round((inter[k-1] - origin[2])/spacing));
-					int z2 = int(std::round((inter[k] - origin[2])/spacing));
-					z1 = std::max(0, std::min(z1, size[2]));
-					z2 = std::max(0, std::min(z2, size[2]));
-					for (int z = z1; z < z2; ++z) {
-						geo_assert(z >= 0 && z < size[2]);
-						const int idx = voxels.index_from_index3(GEO::vec3i(x, y, z));
-						voxels.at(idx) = T(1) - voxels.at(idx);
+				for (int z = 0, s = 0, i = 0; z < size[2]; ++z) {
+					GEO::vec3 center = voxels.voxel_center(x, y, z);
+					for (; i < inter.size() && inter[i].first < center[2]; ++i) {
+						s += inter[i].second;
 					}
+					const int idx = voxels.index_from_index3(GEO::vec3i(x, y, z));
+					voxels.at(idx) = T(s < 0 ? 1 : 0);
 				}
 			}
 		}, 0, size[1]);
