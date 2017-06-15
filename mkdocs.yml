@@ -1,4 +1,7 @@
 site_name: Geotools
-docs_dir: .
+repo_url: https://github.com/jdumas/geotools
+
+docs_dir: '.'
+
 pages:
     - Home: README.md
