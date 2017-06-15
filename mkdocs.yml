@@ -1,2 +1,4 @@
 site_name: Geotools
 docs_dir: .
+pages:
+    - Home: README.md
