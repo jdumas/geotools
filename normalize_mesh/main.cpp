@@ -55,6 +55,29 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Compute center of mass of a mesh (M need not be a volumetric mesh)
+GEO::vec3 centerOfMass(const GEO::Mesh &M) {
+	GEO::vec3 com(0, 0, 0);
+	GEO::vec3 t[4];
+	t[3] = GEO::vec3(0, 0, 0);
+	double volume_total = 0;
+	for (int f = 0; f < (int) M.facets.nb(); ++f) {
+		for(GEO::index_t c = M.facets.corners_begin(f), i = 0;
+			c < M.facets.corners_end(f); ++c, ++i)
+		{
+			geo_assert(i < 3);
+			t[i] = M.vertices.point(M.facet_corners.vertex(c));
+		}
+		double vol = GEO::Geom::tetra_signed_volume(t[0], t[1], t[2], t[3]);
+		com += vol * 0.25 * (t[0] + t[1] + t[2] + t[3]);
+		volume_total += vol;
+	}
+	com /= volume_total;
+	return com;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 int main(int argc, char** argv) {
 	// Initialize the Geogram library
 	GEO::initialize();
@@ -63,6 +86,7 @@ int main(int argc, char** argv) {
 	GEO::CmdLine::import_arg_group("standard");
 	GEO::CmdLine::import_arg_group("pre");
 	GEO::CmdLine::declare_arg("extent", 1.0, "Maximum physical extent (in mm)");
+	GEO::CmdLine::declare_arg("com", false, "Normalize around center of mass instead of min-corner");
 
 	// Parse command line options and filenames
 	std::vector<std::string> filenames;
@@ -71,6 +95,7 @@ int main(int argc, char** argv) {
 	}
 
 	double target_extent = GEO::CmdLine::get_arg_double("extent");
+	bool use_com = GEO::CmdLine::get_arg_bool("com");
 
 	// Default output filename is "output" if unspecified
 	if (filenames.size() == 1) {
@@ -108,10 +133,14 @@ int main(int argc, char** argv) {
 	GEO::get_bbox(M, &min_corner[0], &max_corner[0]);
 	GEO::vec3 extent = max_corner - min_corner;
 	double scaling = std::max(extent[0], std::max(extent[1], extent[2]));
-	for (int v = 0; v < M.vertices.nb(); ++v) {
-		M.vertices.point(v) = target_extent * (M.vertices.point(v) - min_corner) / scaling;
+	GEO::vec3 origin = min_corner;
+	if (use_com) {
+		origin = centerOfMass(M);
 	}
-	max_corner = min_corner + 0.5 * extent;
+	for (int v = 0; v < M.vertices.nb(); ++v) {
+		M.vertices.point(v) = target_extent * (M.vertices.point(v) - origin) / scaling;
+	}
+	//max_corner = min_corner + 0.5 * extent;
 
 	// -------------------------------------------------------------------------
 	// Extract submesh

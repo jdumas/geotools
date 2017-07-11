@@ -306,7 +306,7 @@ inline GEO::Sign orient_2d_inexact(GEO::vec2 p0, GEO::vec2 p1, GEO::vec2 p2) {
  * @param[in]  q     { Query point (only XY coordinates are used) }
  * @param[out] z     { Intersection }
  *
- * @return     { description_of_the_return_value }
+ * @return     { {-1,0,1} depending on the sign of the intersection. }
  */
 template<int X = 0, int Y = 1, int Z = 2>
 int intersect_ray_z(const GEO::Mesh &M, GEO::index_t f, const GEO::vec3 &q, double &z) {
@@ -419,18 +419,27 @@ void compute_sign(const GEO::Mesh &M,
 				box.xyz_min[2] = min_corner[2] - spacing;
 				box.xyz_max[2] = max_corner[2] + spacing;
 
-				std::vector<double> inter;
+				std::vector<std::pair<double, int>> inter;
 				auto action = [&M, &inter, &center] (GEO::index_t f) {
 					double z;
-					if (intersect_ray_z(M, f, center, z)) {
-						inter.push_back(z);
+					if (int s = intersect_ray_z(M, f, center, z)) {
+						inter.emplace_back(z, s);
 					}
 				};
 				aabb_tree.compute_bbox_facet_bbox_intersections(box, action);
 				std::sort(inter.begin(), inter.end());
 
-				dexels.at(x, y).resize(inter.size());
-				std::copy_n(inter.begin(), inter.size(), dexels.at(x, y).begin());
+				std::vector<double> reduced;
+				for (int i = 0, s = 0; i < inter.size(); ++i) {
+					const int ds = inter[i].second;
+					s += ds;
+					if ((s == -1 && ds < 0) || (s == 0 && ds > 0)) {
+						reduced.push_back(inter[i].first);
+					}
+				}
+
+				dexels.at(x, y).resize(reduced.size());
+				std::copy_n(reduced.begin(), reduced.size(), dexels.at(x, y).begin());
 			}
 		}, 0, size[1]);
 	} catch(const GEO::TaskCanceled&) {
