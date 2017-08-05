@@ -17,6 +17,7 @@
 OctreeGrid::OctreeGrid(Eigen::Vector3i fineCellGridSize, int maxNodeGuess, int maxCellGuess)
 	: m_NodeGridSize(fineCellGridSize.array() + 1)
 	, m_CellGridSize(fineCellGridSize)
+	, m_NumRootCells(0)
 {
 	m_Nodes.reserve(maxNodeGuess);
 	m_Cells.reserve(maxCellGuess);
@@ -77,6 +78,7 @@ void OctreeGrid::createRootCells() {
 		}
 		m_Cells.emplace_back(newCell);
 	}
+	m_NumRootCells = (int) m_Cells.size();
 
 	// Link adjacent cells together
 	for (int i = 0; i < coarseCellGridSize.prod(); ++i) {
@@ -157,6 +159,34 @@ bool OctreeGrid::cellIs2to1Graded(int cellId) const {
 	return testEdge(v0, v1, X) && testEdge(v3, v2, X) && testEdge(v4, v5, X) && testEdge(v7, v6, X)
 		&& testEdge(v0, v3, Y) && testEdge(v1, v2, Y) && testEdge(v4, v7, Y) && testEdge(v5, v6, Y)
 		&& testEdge(v0, v4, Z) && testEdge(v1, v5, Z) && testEdge(v3, v7, Z) && testEdge(v2, v6, Z);
+}
+
+// -----------------------------------------------------------------------------
+
+// Return true iff the octree is paired
+bool OctreeGrid::isPaired() const {
+	for (int i = 0; i < numCells(); ++i) {
+		if (!cellIsPaired(i)) {
+			return false;
+		}
+	}
+	return true;
+}
+
+// Return true iff the cell cellId is paired (its children are either all leaves, or all internal nodes)
+bool OctreeGrid::cellIsPaired(int cellId) const {
+	if (cellIsLeaf(cellId)) {
+		return true;
+	} else {
+		const int firstChild = m_Cells[cellId].firstChild;
+		const bool allLeaf = cellIsLeaf(firstChild);
+		for (int k = 1; k < 8; ++k) {
+			if (cellIsLeaf(firstChild + k) != allLeaf) {
+				return false;
+			}
+		}
+		return true;
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -456,7 +486,7 @@ v0──────x─────v1
 
 
 // Subdivide a cell and add the subcells to the octree
-int OctreeGrid::splitCell(int cellId, bool graded) {
+int OctreeGrid::splitCell(int cellId, bool graded, bool paired) {
 	oct_debug(cellId != -1);
 	oct_debug(cellIsLeaf(cellId));
 	const Cell &cell = m_Cells[cellId];
@@ -523,31 +553,28 @@ int OctreeGrid::splitCell(int cellId, bool graded) {
 		updateSubcellLinks(prevCell(cellId, axis), cellId, axis);
 	}
 
+	// Ensure proper 2:1 grading
 	if (graded) {
-		for (int ax1 = 0; ax1 < 3; ++ax1) {
-			for (int d1 = 0; d1 < 2; ++d1) {
-				// Neighboring cells along a face
-				if (adjCell(cellId, ax1, d1) != -1) {
-					while (adjCell(adjCell(cellId, ax1, d1), ax1, 1-d1) != cellId) {
-						oct_debug(cellExtent(adjCell(cellId, ax1, d1)) > cellExtent(cellId));
-						splitCell(adjCell(cellId, ax1, d1), graded);
-					}
-					// Neighboring cell along an edge
-					for (int ax2 = 0; ax2 < 3; ++ax2) {
-						if (ax1 == ax2) { continue; }
-						const int c1 = adjCell(cellId, ax1, d1);
-						for (int d2 = 0; d2 < 2; ++d2) {
-							if (adjCell(c1, ax2, d2) != -1) {
-								while (adjCell(adjCell(c1, ax2, d2), ax2, 1-d2) != c1) {
-									oct_debug(cellExtent(adjCell(c1, ax2, d2)) > cellExtent(c1));
-									splitCell(adjCell(c1, ax2, d2), graded);
-								}
-							}
-						}
-					}
-				}
+		makeCellGraded(cellId, paired);
+	}
+
+	// Ensure children are either all leaves, or all internal cells
+	if (paired) {
+		makeCellPaired(cellId, graded);
+
+		if (cellId < m_NumRootCells) {
+			// Special case for root cells: if one gets split, then we need to split all root cells
+			for (int c = 0; c < m_NumRootCells; ++c) {
+				if (cellIsLeaf(c)) { splitCell(c, graded, paired); }
+			}
+		} else {
+			// Ensure sibling cells are also properly split
+			int firstSibling = m_NumRootCells + 8 * ((cellId - m_NumRootCells) / 8);
+			for (int c = firstSibling; c < firstSibling + 8; ++c) {
+				if (cellIsLeaf(c)) { splitCell(c, graded, paired); }
 			}
 		}
+
 	}
 
 	return c0;
@@ -555,12 +582,64 @@ int OctreeGrid::splitCell(int cellId, bool graded) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Make the cell 2:1 graded
+bool OctreeGrid::makeCellGraded(int cellId, bool paired) {
+	bool splitOccured = false;
+	for (int ax1 = 0; ax1 < 3; ++ax1) {
+		for (int d1 = 0; d1 < 2; ++d1) {
+			// Neighboring cells along a face
+			if (adjCell(cellId, ax1, d1) != -1) {
+				while (adjCell(adjCell(cellId, ax1, d1), ax1, 1-d1) != cellId) {
+					oct_debug(cellExtent(adjCell(cellId, ax1, d1)) > cellExtent(cellId));
+					splitCell(adjCell(cellId, ax1, d1), true, paired);
+					splitOccured = true;
+				}
+				// Neighboring cell along an edge
+				for (int ax2 = 0; ax2 < 3; ++ax2) {
+					if (ax1 == ax2) { continue; }
+					const int c1 = adjCell(cellId, ax1, d1);
+					for (int d2 = 0; d2 < 2; ++d2) {
+						if (adjCell(c1, ax2, d2) != -1) {
+							while (adjCell(adjCell(c1, ax2, d2), ax2, 1-d2) != c1) {
+								oct_debug(cellExtent(adjCell(c1, ax2, d2)) > cellExtent(c1));
+								splitCell(adjCell(c1, ax2, d2), true, paired);
+								splitOccured = true;
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	return splitOccured;
+}
+
+// -----------------------------------------------------------------------------
+
+// Make the cell Paired (its children are either all leaves, or all internal nodes)
+bool OctreeGrid::makeCellPaired(int cellId, bool graded) {
+	if (!cellIsPaired(cellId)) {
+		const int firstChild = m_Cells[cellId].firstChild;
+		for (int k = 0; k < 8; ++k) {
+			if (cellIsLeaf(firstChild + k)) {
+				splitCell(firstChild + k, graded, true);
+			}
+		}
+		return true;
+	}
+	return false;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 // Traverse the leaf cells recursively and split them according to the predicate function
-void OctreeGrid::subdivide(std::function<bool(int, int, int, int)> predicate, bool graded, int maxCells) {
-	std::queue<int> leaves;
+void OctreeGrid::subdivide(std::function<bool(int, int, int, int)> predicate,
+	bool graded, bool paired, int maxCells)
+{
+	std::queue<int> pending;
 	for (int i = 0; i < (int) m_Cells.size(); ++i) {
 		if (cellIsLeaf(i)) {
-			leaves.push(i);
+			pending.push(i);
 		}
 	}
 
@@ -570,19 +649,20 @@ void OctreeGrid::subdivide(std::function<bool(int, int, int, int)> predicate, bo
 	if (maxCells < 0) {
 		maxCells = std::numeric_limits<int>::max();
 	}
-	while (!leaves.empty() && numCells() + 8 <= maxCells) {
-		int id = leaves.front();
-		leaves.pop();
+	while (!pending.empty() && numCells() + 8 <= maxCells) {
+		int id = pending.front();
+		pending.pop();
 		int extent = cellExtent(id);
 		auto pos = cellCornerPos(id, 0);
 		if (predicate(pos[0], pos[1], pos[2], extent)) {
 			if (extent == 1) {
 				std::cerr << "[OctreeGrid] Cannot subdivide cell of length 1." << std::endl;
 			} else {
-				int firstChild = (int) m_Cells.size();
-				splitCell(id, graded);
+				if (cellIsLeaf(id)) {
+					splitCell(id, graded, paired);
+				}
 				for (int k = 0; k < 8; ++k) {
-					leaves.push(firstChild + k);
+					pending.push(m_Cells[id].firstChild + k);
 				}
 			}
 		}
@@ -767,7 +847,7 @@ void OctreeGrid::assertIsValid() {
 
 // -----------------------------------------------------------------------------
 
-void OctreeGrid::testSubdivideRandom() {
+void OctreeGrid::testSubdivideRandom(bool graded, bool paired) {
 	bool bfs = false;
 	std::vector<std::pair<int, int> > leaves, next;
 
@@ -791,9 +871,9 @@ void OctreeGrid::testSubdivideRandom() {
 		std::swap(leaves[i], leaves.back());
 		leaves.pop_back();
 		if (depth < m_MaxDepth) {
-			if (distr(gen) > 0.2) {
+			if (distr(gen) > 0.2 && cellIsLeaf(id)) {
 				int newId = (int) m_Cells.size();
-				splitCell(id, false);
+				splitCell(id, graded, paired);
 				for (int k = 0; k < 8; ++k) {
 					if (bfs) {
 						next.emplace_back(depth + 1, newId++);
@@ -816,11 +896,16 @@ void OctreeGrid::testSubdivideRandom() {
 	}
 	assertIsValid();
 
-	std::shuffle(m_Cells.begin(), m_Cells.end(), std::default_random_engine());
+	//std::shuffle(m_Cells.begin(), m_Cells.end(), std::default_random_engine());
 
 	// logger_debug("Octree", "Graded %s", is2to1Graded());
 	// logger_debug("Octree", "Build ok");
+	std::cout << "Graded: " << is2to1Graded() << std::endl;
+	std::cout << "Paired: " << isPaired() << std::endl;
 
 	// logger_debug("Octree", "Num nodes: %s", m_Nodes.size());
 	// logger_debug("Octree", "Num cells: %s", m_Cells.size());
+
+	if (graded) { oct_assert(is2to1Graded()); }
+	if (paired) { oct_assert(isPaired()); }
 }

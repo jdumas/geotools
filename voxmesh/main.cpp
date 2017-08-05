@@ -453,6 +453,7 @@ void compute_sign(const GEO::Mesh &M, const GEO::MeshFacetsAABB &aabb_tree,
 	OctreeGrid &octree, GEO::vec3 origin, double spacing)
 {
 	Eigen::VectorXf & inside = octree.cellAttributes.create<float>("inside");
+	inside.resize(octree.numCells());
 	inside.setZero();
 
 	try {
@@ -479,18 +480,27 @@ void compute_sign(const GEO::Mesh &M, const GEO::MeshFacetsAABB &aabb_tree,
 				origin[2] + spacing * cell_xyz_min[2] + 0.5 * spacing * extent
 			);
 
-			std::vector<double> inter;
+			std::vector<std::pair<double, int>> inter;
 			auto action = [&M, &inter, &center] (GEO::index_t f) {
 				double z;
-				if (intersect_ray_z(M, f, center, z)) {
-					inter.push_back(z);
+				if (int s = intersect_ray_z(M, f, center, z)) {
+					inter.emplace_back(z, s);
 				}
 			};
 			aabb_tree.compute_bbox_facet_bbox_intersections(box, action);
-			//std::sort(inter.begin(), inter.end());
+			std::sort(inter.begin(), inter.end());
+
+			std::vector<double> reduced;
+			for (int i = 0, s = 0; i < inter.size(); ++i) {
+				const int ds = inter[i].second;
+				s += ds;
+				if ((s == -1 && ds < 0) || (s == 0 && ds > 0)) {
+					reduced.push_back(inter[i].first);
+				}
+			}
 
 			int num_before = 0;
-			for (double z : inter) {
+			for (double z : reduced) {
 				if (z < center[2]) { ++num_before; }
 			}
 			if (num_before % 2 == 1) {
@@ -721,15 +731,26 @@ void dexel_dump(std::string &filename, const DexelGrid<T> &dexels) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// https://stackoverflow.com/questions/466204/rounding-up-to-next-power-of-2
+static unsigned next_pow2(unsigned x) {
+	x -= 1;
+	x |= (x >> 1);
+	x |= (x >> 2);
+	x |= (x >> 4);
+	x |= (x >> 8);
+	x |= (x >> 16);
+	return x + 1;
+}
+
 void compute_octree(const GEO::Mesh &M, const GEO::MeshFacetsAABB &aabb_tree,
 	const std::string &filename, GEO::vec3 min_corner, GEO::vec3 extent,
-	double spacing, int padding, bool graded)
+	double spacing, int padding, bool graded, bool paired)
 {
 	GEO::vec3 origin =  min_corner - padding * spacing * GEO::vec3(1, 1, 1);
 	Eigen::Vector3i grid_size(
-		std::ceil(extent[0] / spacing) + 2 * padding,
-		std::ceil(extent[1] / spacing) + 2 * padding,
-		std::ceil(extent[2] / spacing) + 2 * padding
+		next_pow2(std::ceil(extent[0] / spacing) + 2 * padding),
+		next_pow2(std::ceil(extent[1] / spacing) + 2 * padding),
+		next_pow2(std::ceil(extent[2] / spacing) + 2 * padding)
 	);
 
 	OctreeGrid octree(grid_size);
@@ -749,7 +770,7 @@ void compute_octree(const GEO::Mesh &M, const GEO::MeshFacetsAABB &aabb_tree,
 		aabb_tree.compute_bbox_facet_bbox_intersections(box, action);
 		return has_triangles;
 	};
-	octree.subdivide(should_subdivide, graded);
+	octree.subdivide(should_subdivide, graded, paired);
 
 	// Compute inside/outside info
 	compute_sign(M, aabb_tree, octree, origin, spacing);
@@ -782,6 +803,7 @@ int main(int argc, char** argv) {
 	GEO::CmdLine::declare_arg("dexelize", false, "Dexelize the input model");
 	GEO::CmdLine::declare_arg("octree", false, "Generate an adaptive octree of the input model");
 	GEO::CmdLine::declare_arg("graded", false, "Should the octree be 2:1 graded");
+	GEO::CmdLine::declare_arg("paired", false, "Should the octree respect the pairing rule");
 
 	// Parse command line options and filenames
 	std::vector<std::string> filenames;
@@ -796,6 +818,7 @@ int main(int argc, char** argv) {
 	bool dexelize = GEO::CmdLine::get_arg_bool("dexelize");
 	bool octree = GEO::CmdLine::get_arg_bool("octree");
 	bool graded = GEO::CmdLine::get_arg_bool("graded");
+	bool paired = GEO::CmdLine::get_arg_bool("paired");
 
 	// Default output filename is "output" if unspecified
 	if(filenames.size() == 1) {
@@ -845,7 +868,7 @@ int main(int argc, char** argv) {
 	// Compute an octree of the input mesh
 	if (octree) {
 		GEO::Logger::div("Octree");
-		compute_octree(M, aabb_tree, filenames[1], min_corner, extent, voxel_size, padding, graded);
+		compute_octree(M, aabb_tree, filenames[1], min_corner, extent, voxel_size, padding, graded, paired);
 		return 0;
 	}
 

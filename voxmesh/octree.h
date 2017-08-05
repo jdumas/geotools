@@ -110,6 +110,9 @@ private:
 	// Max octree depth
 	int m_MaxDepth;
 
+	// Number of root cells
+	int m_NumRootCells;
+
 	// Octree cells and nodes
 	std::vector<Node> m_Nodes;
 	std::vector<Cell> m_Cells;
@@ -165,8 +168,14 @@ public:
 	// Returns true iff the octree is 2:1 graded
 	bool is2to1Graded() const;
 
-	// Return true iff the cell cellId is 2:1 graded
+	// Return true iff the leaf cell cellId is 2:1 graded
 	bool cellIs2to1Graded(int cellId) const;
+
+	// Return true iff the octree is paired
+	bool isPaired() const;
+
+	// Return true iff the cell cellId is paired (its children are either all leaves, or all internal nodes)
+	bool cellIsPaired(int cellId) const;
 
 private:
 	///////////////////////
@@ -224,11 +233,20 @@ private:
 
 	// Subdivide a cell (graded: impose a 2:1 cell size grading)
 	// @return     { id of the new node in the middle of the cell }
-	int splitCell(int cellId, bool graded);
+	int splitCell(int cellId, bool graded, bool paired);
+
+	// Make the cell 2:1 graded
+	// @return     { true if a subdivision occurred }
+	bool makeCellGraded(int cellId, bool paired);
+
+	// Make the cell paired (its children are either all leaves, or all internal nodes)
+	// @return     { true if a subdivision occurred }
+	bool makeCellPaired(int cellId, bool graded);
 
 public:
 	// Traverse the leaf cells recursively and split them according to the predicate function
-	void subdivide(std::function<bool(int, int, int, int)> predicate, bool graded, int maxCells = -1);
+	void subdivide(std::function<bool(int, int, int, int)> predicate,
+		bool graded = false, bool paired = false, int maxCells = -1);
 
 public:
 	/////////////////
@@ -250,6 +268,6 @@ public:
 	void assertIsValid();
 
 	// Subdivide a cell into 8 child cells
-	void testSubdivideRandom();
+	void testSubdivideRandom(bool graded, bool paired);
 };
 
