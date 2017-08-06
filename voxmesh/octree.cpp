@@ -658,6 +658,7 @@ void OctreeGrid::subdivide(std::function<bool(int, int, int, int)> predicate,
 			if (extent == 1) {
 				std::cerr << "[OctreeGrid] Cannot subdivide cell of length 1." << std::endl;
 			} else {
+				++numSubdivided;
 				if (cellIsLeaf(id)) {
 					splitCell(id, graded, paired);
 				}

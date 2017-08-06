@@ -58,6 +58,7 @@
 #include <geogram/mesh/mesh_io.h>
 #include <geogram/mesh/mesh_AABB.h>
 #include <geogram/numerics/predicates.h>
+#include <geogram/delaunay/delaunay.h>
 #include <algorithm>
 #include <array>
 #include <iterator>
@@ -512,6 +513,79 @@ void compute_sign(const GEO::Mesh &M, const GEO::MeshFacetsAABB &aabb_tree,
 	}
 }
 
+// -----------------------------------------------------------------------------
+
+void compute_dist(const GEO::Mesh &M, const GEO::MeshFacetsAABB &aabb_tree,
+	OctreeGrid &octree, GEO::vec3 origin, double spacing)
+{
+	Eigen::VectorXf &dist = octree.cellAttributes.create<float>("sq_dist");
+	dist.resize(octree.numCells());
+	dist.setZero();
+
+	try {
+		GEO::ProgressTask task("Eval distance", 100);
+
+		GEO::vec3 min_corner, max_corner;
+		GEO::get_bbox(M, &min_corner[0], &max_corner[0]);
+
+		GEO::parallel_for([&](int cellId) {
+			if (octree.cellIsLeaf(cellId)) {
+				auto cell_xyz_min = octree.cellCornerPos(cellId, OctreeGrid::CORNER_X0_Y0_Z0);
+				auto extent = octree.cellExtent(cellId);
+
+				GEO::vec3 center(
+					origin[0] + spacing * cell_xyz_min[0] + 0.5 * spacing * extent,
+					origin[1] + spacing * cell_xyz_min[1] + 0.5 * spacing * extent,
+					origin[2] + spacing * cell_xyz_min[2] + 0.5 * spacing * extent
+				);
+
+				dist(cellId) = aabb_tree.squared_distance(center);
+			}
+		}, 0, octree.numCells());
+	} catch(const GEO::TaskCanceled&) {
+		// Do early cleanup
+	}
+}
+
+// -----------------------------------------------------------------------------
+
+void compute_inter(const GEO::Mesh &M, const GEO::MeshFacetsAABB &aabb_tree,
+	OctreeGrid &octree, GEO::vec3 origin, double spacing)
+{
+	Eigen::VectorXf & inter = octree.cellAttributes.create<float>("inter");
+	inter.resize(octree.numCells());
+	inter.setZero();
+
+	try {
+		GEO::ProgressTask task("Surface cells", 100);
+
+		GEO::vec3 min_corner, max_corner;
+		GEO::get_bbox(M, &min_corner[0], &max_corner[0]);
+
+		GEO::parallel_for([&](int cellId) {
+			if (octree.cellIsLeaf(cellId)) {
+				auto cell_xyz_min = octree.cellCornerPos(cellId, OctreeGrid::CORNER_X0_Y0_Z0);
+				auto extent = octree.cellExtent(cellId);
+
+				GEO::Box box;
+				box.xyz_min[0] = origin[0] + spacing * cell_xyz_min[0];
+				box.xyz_min[1] = origin[1] + spacing * cell_xyz_min[1];
+				box.xyz_min[2] = origin[2] + spacing * cell_xyz_min[2];
+				box.xyz_max[0] = box.xyz_min[0] + spacing * extent;
+				box.xyz_max[1] = box.xyz_min[1] + spacing * extent;
+				box.xyz_max[2] = box.xyz_min[2] + spacing * extent;
+
+				auto action = [&inter, cellId] (GEO::index_t f) {
+					inter(cellId) = 1.f;
+				};
+				aabb_tree.compute_bbox_facet_bbox_intersections(box, action);
+			}
+		}, 0, octree.numCells());
+	} catch(const GEO::TaskCanceled&) {
+		// Do early cleanup
+	}
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 typedef unsigned char num_t;
@@ -731,6 +805,86 @@ void dexel_dump(std::string &filename, const DexelGrid<T> &dexels) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void test_power_diagram(const OctreeGrid &octree, GEO::vec3 origin, double spacing) {
+	const Eigen::VectorXf &dist = octree.cellAttributes.get<float>("sq_dist");
+	const Eigen::VectorXf &inter = octree.cellAttributes.get<float>("inter");
+	const Eigen::VectorXf &inside = octree.cellAttributes.get<float>("inside");
+
+	double wmax = 0;
+	std::vector<GEO::vec4> points;
+	std::vector<bool> solid;
+	for (int cellId = 0; cellId < octree.numCells(); ++cellId) {
+		if (octree.cellIsLeaf(cellId)) {
+			auto cell_xyz_min = octree.cellCornerPos(cellId, OctreeGrid::CORNER_X0_Y0_Z0);
+			auto extent = octree.cellExtent(cellId);
+
+			GEO::vec3 center(
+				origin[0] + spacing * cell_xyz_min[0] + 0.5 * spacing * extent,
+				origin[1] + spacing * cell_xyz_min[1] + 0.5 * spacing * extent,
+				origin[2] + spacing * cell_xyz_min[2] + 0.5 * spacing * extent
+			);
+
+			double w = (inter(cellId) > 0 ? std::sqrt(dist(cellId)) : 0.5 * std::sqrt(3.0) * spacing * extent);
+			points.emplace_back(center[0], center[1], center[2], w);
+			solid.push_back(inside(cellId) > 0);
+			wmax = std::max(w, wmax);
+		}
+	}
+
+	for (auto & p : points) {
+		//p[3] = std::sqrt(wmax - p[3]);
+	}
+
+	GEO::Delaunay_var delaunay = GEO::Delaunay::create(4, "BPOW");
+	delaunay->set_vertices(points.size(), &points[0][0]);
+
+	std::cout << delaunay->nb_cells() << std::endl;
+	std::cout << delaunay->nb_vertices() << std::endl;
+	GEO::Mesh M_out;
+	GEO::vector<double> pts(delaunay->nb_vertices() * 3);
+	for (GEO::index_t v = 0; v < delaunay->nb_vertices(); ++v) {
+		pts[3 * v]     = delaunay->vertex_ptr(v)[0];
+		pts[3 * v + 1] = delaunay->vertex_ptr(v)[1];
+		pts[3 * v + 2] = delaunay->vertex_ptr(v)[2];
+	}
+	GEO::vector<GEO::index_t> tet2v;
+	for (GEO::index_t t = 0; t < delaunay->nb_cells(); ++t) {
+		GEO::index_t tet[4];
+		tet[0] = GEO::index_t(delaunay->cell_vertex(t, 0));
+		tet[1] = GEO::index_t(delaunay->cell_vertex(t, 1));
+		tet[2] = GEO::index_t(delaunay->cell_vertex(t, 2));
+		tet[3] = GEO::index_t(delaunay->cell_vertex(t, 3));
+		if (solid[tet[0]] && solid[tet[1]] && solid[tet[2]] && solid[tet[3]]) {
+			tet2v.push_back(tet[0]);
+			tet2v.push_back(tet[1]);
+			tet2v.push_back(tet[2]);
+			tet2v.push_back(tet[3]);
+		}
+	}
+	M_out.cells.assign_tet_mesh(3, pts, tet2v, true);
+	// GEO::vector<GEO::index_t> tri2v;
+	// for(GEO::index_t t = 0; t < delaunay->nb_cells(); ++t) {
+	// 	GEO::index_t tet[4];
+	// 	for (GEO::index_t lv = 0; lv < 4; ++lv) {
+	// 		tet[0] = GEO::index_t(delaunay->cell_vertex(t, (lv+0)%4));
+	// 		tet[1] = GEO::index_t(delaunay->cell_vertex(t, (lv+1)%4));
+	// 		tet[2] = GEO::index_t(delaunay->cell_vertex(t, (lv+2)%4));
+	// 		tet[3] = GEO::index_t(delaunay->cell_vertex(t, (lv+3)%4));
+
+	// 		if (inside(tet[0]) == 0 && inside(tet[1]) && inside(tet[2]) && inside(tet[3])) {
+
+	// 		}
+	// 	}
+	// }
+	// M_out.facets.assign_triangle_mesh(3, pts, tri2v, true);
+
+	GEO::MeshIOFlags flags;
+	flags.set_attributes(GEO::MESH_ALL_ATTRIBUTES);
+	mesh_save(M_out, "pow.geogram", flags);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 // https://stackoverflow.com/questions/466204/rounding-up-to-next-power-of-2
 static unsigned next_pow2(unsigned x) {
 	x -= 1;
@@ -744,7 +898,7 @@ static unsigned next_pow2(unsigned x) {
 
 void compute_octree(const GEO::Mesh &M, const GEO::MeshFacetsAABB &aabb_tree,
 	const std::string &filename, GEO::vec3 min_corner, GEO::vec3 extent,
-	double spacing, int padding, bool graded, bool paired)
+	double spacing, int padding, bool graded, bool paired, bool dist)
 {
 	GEO::vec3 origin =  min_corner - padding * spacing * GEO::vec3(1, 1, 1);
 	Eigen::Vector3i grid_size(
@@ -775,6 +929,13 @@ void compute_octree(const GEO::Mesh &M, const GEO::MeshFacetsAABB &aabb_tree,
 	// Compute inside/outside info
 	compute_sign(M, aabb_tree, octree, origin, spacing);
 
+	// Compute distance to the surface
+	if (dist) {
+		compute_dist(M, aabb_tree, octree, origin, spacing);
+		compute_inter(M, aabb_tree, octree, origin, spacing);
+		test_power_diagram(octree, origin, spacing);
+	}
+
 	// Export
 	GEO::Logger::div("Saving");
 	GEO::Mesh M_out;
@@ -796,6 +957,7 @@ int main(int argc, char** argv) {
 
 	// Import standard command line arguments, and custom ones
 	GEO::CmdLine::import_arg_group("standard");
+	GEO::CmdLine::import_arg_group("algo");
 	GEO::CmdLine::declare_arg("padding", 0, "Number of padded grid cells");
 	GEO::CmdLine::declare_arg("resolution", 1.0, "Size of a voxel (in mm)");
 	GEO::CmdLine::declare_arg("numvoxels", -1, "Number of voxels along the longest axis");
@@ -804,6 +966,7 @@ int main(int argc, char** argv) {
 	GEO::CmdLine::declare_arg("octree", false, "Generate an adaptive octree of the input model");
 	GEO::CmdLine::declare_arg("graded", false, "Should the octree be 2:1 graded");
 	GEO::CmdLine::declare_arg("paired", false, "Should the octree respect the pairing rule");
+	GEO::CmdLine::declare_arg("dist", false, "Compute distance to the surface (octree)");
 
 	// Parse command line options and filenames
 	std::vector<std::string> filenames;
@@ -819,6 +982,7 @@ int main(int argc, char** argv) {
 	bool octree = GEO::CmdLine::get_arg_bool("octree");
 	bool graded = GEO::CmdLine::get_arg_bool("graded");
 	bool paired = GEO::CmdLine::get_arg_bool("paired");
+	bool dist = GEO::CmdLine::get_arg_bool("dist");
 
 	// Default output filename is "output" if unspecified
 	if(filenames.size() == 1) {
@@ -868,7 +1032,8 @@ int main(int argc, char** argv) {
 	// Compute an octree of the input mesh
 	if (octree) {
 		GEO::Logger::div("Octree");
-		compute_octree(M, aabb_tree, filenames[1], min_corner, extent, voxel_size, padding, graded, paired);
+		compute_octree(M, aabb_tree, filenames[1], min_corner, extent, voxel_size,
+			padding, graded, paired, dist);
 		return 0;
 	}
 
