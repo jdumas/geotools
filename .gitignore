@@ -1,6 +1,69 @@
-# build dir
-build/
+# Prerequisites
+*.d
 
-# mesh files
-*.ply
+# Compiled Object files
+*.slo
+*.lo
+*.o
 *.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# Images
+*.png
+*.jpg
+*.gif
+
+# Triangle meshes
+*.obj
+*.stl
+*.ply
+*.xyz
+
+# Extra directories
+.vscode/
+build/
+latex.out/
+3rdparty/eigen
+3rdparty/geogram
+Win32
+x64
+yimg.dir
+
+# Config stuff
+*.ini
+
+# Latex stuff
+*.bbl
+*.blg
+*.log
+*.out
+*.pdf
+*.aux
+*.synctex.gz
+*.fdb_latexmk
+*.fls
+*.run.xml
+*-blx.bib
