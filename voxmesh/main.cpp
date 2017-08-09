@@ -805,12 +805,28 @@ void dexel_dump(std::string &filename, const DexelGrid<T> &dexels) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+GEO::vec3 tetra_monge_point(const GEO::vec3 &v1, const GEO::vec3 &v2, const GEO::vec3 &v3, const GEO::vec3 &v4) {
+	Eigen::Matrix<double, 4, 3> A;
+	Eigen::Vector4d b;
+	GEO::Plane p1(0.5*(v1+v2), 0.5*(v1+v3), 0.5*(v1+v4));
+	GEO::Plane p2(0.5*(v2+v1), 0.5*(v2+v3), 0.5*(v2+v4));
+	GEO::Plane p3(0.5*(v3+v1), 0.5*(v3+v2), 0.5*(v3+v4));
+	GEO::Plane p4(0.5*(v4+v1), 0.5*(v4+v2), 0.5*(v4+v3));
+	A << p1.a, p1.b, p1.c,
+	     p2.a, p2.b, p2.c,
+	     p3.a, p3.b, p3.c,
+	     p4.a, p4.b, p4.c;
+	b << -p1.d, -p2.d, -p3.d, -p4.d;
+	Eigen::Vector3d x = A.jacobiSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(b);
+	return GEO::vec3(x[0], x[1], x[2]);
+}
+
 void test_power_diagram(const OctreeGrid &octree, GEO::vec3 origin, double spacing) {
-	const Eigen::VectorXf &dist = octree.cellAttributes.get<float>("sq_dist");
+	const Eigen::VectorXf &sqdist = octree.cellAttributes.get<float>("sq_dist");
 	const Eigen::VectorXf &inter = octree.cellAttributes.get<float>("inter");
 	const Eigen::VectorXf &inside = octree.cellAttributes.get<float>("inside");
 
-	double wmax = 0;
+	double wmax = std::numeric_limits<double>::lowest();
 	std::vector<GEO::vec4> points;
 	std::vector<bool> solid;
 	for (int cellId = 0; cellId < octree.numCells(); ++cellId) {
@@ -824,7 +840,7 @@ void test_power_diagram(const OctreeGrid &octree, GEO::vec3 origin, double spaci
 				origin[2] + spacing * cell_xyz_min[2] + 0.5 * spacing * extent
 			);
 
-			double w = (inter(cellId) > 0 ? std::sqrt(dist(cellId)) : 0.5 * std::sqrt(3.0) * spacing * extent);
+			double w = -(inter(cellId) < 0 ? sqdist(cellId) : 3.0 * spacing*spacing * extent*extent * 0.5*0.5);
 			points.emplace_back(center[0], center[1], center[2], w);
 			solid.push_back(inside(cellId) > 0);
 			wmax = std::max(w, wmax);
@@ -832,7 +848,7 @@ void test_power_diagram(const OctreeGrid &octree, GEO::vec3 origin, double spaci
 	}
 
 	for (auto & p : points) {
-		//p[3] = std::sqrt(wmax - p[3]);
+		p[3] = std::sqrt(wmax - p[3]);
 	}
 
 	GEO::Delaunay_var delaunay = GEO::Delaunay::create(4, "BPOW");
@@ -841,27 +857,100 @@ void test_power_diagram(const OctreeGrid &octree, GEO::vec3 origin, double spaci
 	std::cout << delaunay->nb_cells() << std::endl;
 	std::cout << delaunay->nb_vertices() << std::endl;
 	GEO::Mesh M_out;
-	GEO::vector<double> pts(delaunay->nb_vertices() * 3);
+	GEO::vector<double> pts;
 	for (GEO::index_t v = 0; v < delaunay->nb_vertices(); ++v) {
-		pts[3 * v]     = delaunay->vertex_ptr(v)[0];
-		pts[3 * v + 1] = delaunay->vertex_ptr(v)[1];
-		pts[3 * v + 2] = delaunay->vertex_ptr(v)[2];
+		//pts[3 * v]     = delaunay->vertex_ptr(v)[0];
+		//pts[3 * v + 1] = delaunay->vertex_ptr(v)[1];
+		//pts[3 * v + 2] = delaunay->vertex_ptr(v)[2];
 	}
 	GEO::vector<GEO::index_t> tet2v;
+	typedef std::pair<int, std::pair<int, int>> Triplet;
+	auto make_triplet = [](int a, int b, int c) {
+		std::array<int, 3> x = {{a, b, c}};
+		std::sort(x.begin(), x.end());
+		return std::make_pair(x[0], std::make_pair(x[1], x[2]));
+	};
+	auto make_couple = [](int a, int b) {
+		return std::make_pair(std::min(a, b), std::max(a, b));
+	};
+	std::map<std::pair<int, int>, std::vector<std::pair<Triplet, int>>> c2e;
 	for (GEO::index_t t = 0; t < delaunay->nb_cells(); ++t) {
 		GEO::index_t tet[4];
 		tet[0] = GEO::index_t(delaunay->cell_vertex(t, 0));
 		tet[1] = GEO::index_t(delaunay->cell_vertex(t, 1));
 		tet[2] = GEO::index_t(delaunay->cell_vertex(t, 2));
 		tet[3] = GEO::index_t(delaunay->cell_vertex(t, 3));
-		if (solid[tet[0]] && solid[tet[1]] && solid[tet[2]] && solid[tet[3]]) {
-			tet2v.push_back(tet[0]);
-			tet2v.push_back(tet[1]);
-			tet2v.push_back(tet[2]);
-			tet2v.push_back(tet[3]);
+		auto c = tetra_monge_point(
+				GEO::vec3(&points[tet[0]][0]), GEO::vec3(&points[tet[1]][0]),
+				GEO::vec3(&points[tet[2]][0]), GEO::vec3(&points[tet[3]][0]));
+		if (solid[tet[0]] || solid[tet[1]] || solid[tet[2]] || solid[tet[3]]) {
+			int idx = pts.size() / 3;
+			pts.push_back(c[0]);
+			pts.push_back(c[1]);
+			pts.push_back(c[2]);
+			for (int i = 0; i < 4; ++i) {
+				for (int j = 0; j < i; ++j) {
+					auto c = make_couple(tet[i], tet[j]);
+					for (int k = 0; k < 4; ++k) {
+						if (k != i && k != j) {
+							auto f = make_triplet(tet[i], tet[j], tet[k]);
+							c2e[c].emplace_back(f, idx);
+						}
+					}
+				}
+			}
+		//	tet2v.push_back(tet[0]);
+		//	tet2v.push_back(tet[1]);
+		//	tet2v.push_back(tet[2]);
+		//	tet2v.push_back(tet[3]);
 		}
 	}
 	M_out.cells.assign_tet_mesh(3, pts, tet2v, true);
+	for (auto &kv : c2e) {
+		int a = kv.first.first;
+		int b = kv.first.second;
+		if (solid[a] == solid[b]) { continue; }
+		std::map<int, std::pair<int, int>> adj;
+		auto insert_edge = [&adj] (int x, int y) {
+			if (!adj.count(x)) {
+				adj[x] = std::make_pair(y, -1);
+			} else {
+				adj[x].second = y;
+			}
+		};
+		auto & f2e = kv.second;
+		std::sort(f2e.begin(), f2e.end());
+		Triplet prev_facet = make_triplet(-1, -1, -1);
+		int prev_idx = -1;
+		for (auto &h : f2e) {
+			if (h.first == prev_facet) {
+				insert_edge(h.second, prev_idx);
+				insert_edge(prev_idx, h.second);
+			}
+			prev_facet = h.first;
+			prev_idx = h.second;
+		}
+		GEO::vector<GEO::index_t> poly;
+		int idx = prev_idx; prev_idx = -1;
+		do {
+			poly.push_back(idx);
+			int next_idx = adj[idx].first;
+			if (next_idx == prev_idx) { next_idx = adj[idx].second; }
+			prev_idx = idx;
+			idx = next_idx;
+			//std::cout << idx << std::endl;
+		} while (idx != poly[0] && idx != -1);
+		if (idx != -1) {
+			M_out.facets.create_polygon(poly);
+		}
+	}
+	for (GEO::index_t v = 0; v < delaunay->nb_vertices(); ++v) {
+		if (solid[v])
+		M_out.vertices.create_vertex(delaunay->vertex_ptr(v));
+		//pts[3 * v]     = delaunay->vertex_ptr(v)[0];
+		//pts[3 * v + 1] = delaunay->vertex_ptr(v)[1];
+		//pts[3 * v + 2] = delaunay->vertex_ptr(v)[2];
+	}
 	// GEO::vector<GEO::index_t> tri2v;
 	// for(GEO::index_t t = 0; t < delaunay->nb_cells(); ++t) {
 	// 	GEO::index_t tet[4];
