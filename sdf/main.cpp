@@ -369,6 +369,7 @@ void compute_unsigned_distance_field_cpu(const GEO::Mesh &M,
 			double sq_dist = aabb_tree.squared_distance(pos);
 			voxels.at(idx) = (float) std::sqrt(sq_dist);
 		}
+
 	} catch(const GEO::TaskCanceled&) {
 		// Do early cleanup
 	}
