@@ -352,12 +352,35 @@ void compute_unsigned_distance_field_gpu(const GEO::Mesh &M,
 
 // -----------------------------------------------------------------------------
 
+// Next power of 2 that is strictly > x
+int next_pow2(int x) {
+	int n = 1;
+	while (n <= x) { n <<= 1; }
+	return n;
+}
+
+Vec3i morton_to_index3(size_t x) {
+	Vec3i pos{0, 0, 0};
+	size_t base = 1;
+	while (x) {
+		pos[0] += base * (x & 1); x >>= 1;
+		pos[1] += base * (x & 1); x >>= 1;
+		pos[2] += base * (x & 1); x >>= 1;
+		base <<= 1;
+	}
+	return pos;
+}
+
+// -----------------------------------------------------------------------------
+
 void compute_unsigned_distance_field_cpu(const GEO::Mesh &M,
 	const GEO::MeshFacetsAABB &aabb_tree, VoxelGrid &voxels)
 {
 
 	try {
 		GEO::ProgressTask task("Sqdist (CPU)", 100);
+
+	#if 0
 		#pragma omp parallel for
 		for (int idx = 0; idx < voxels.num_voxels(); ++idx) {
 			if (omp_get_thread_num() == 0) {
@@ -369,11 +392,61 @@ void compute_unsigned_distance_field_cpu(const GEO::Mesh &M,
 			double sq_dist = aabb_tree.squared_distance(pos);
 			voxels.at(idx) = (float) std::sqrt(sq_dist);
 		}
+	#elif 1
+		GEO::index_t prev_facet = GEO::NO_FACET;
+		double sq_dist = std::numeric_limits<double>::max();
+		GEO::vec3 nearest_point;
+		#pragma omp parallel for private(prev_facet, sq_dist, nearest_point)
+		for (int idx = 0; idx < voxels.num_voxels(); ++idx) {
+			if (omp_get_thread_num() == 0) {
+				task.progress((int) (100.0 * idx / voxels.num_voxels() * omp_get_num_threads()));
+			}
+
+			Vec3i vox = voxels.index3_from_index(idx);
+			GEO::vec3 query = voxels.voxel_center(vox[0], vox[1], vox[2]);
+			if (prev_facet != GEO::NO_FACET) {
+				GEO::get_point_facet_nearest_point(M, query, prev_facet, nearest_point, sq_dist);
+			}
+			aabb_tree.nearest_facet_with_hint(query, prev_facet, nearest_point, sq_dist);
+			voxels.at(idx) = (float) std::sqrt(sq_dist);
+		}
+	#else
+
+		Vec3i num_voxels = voxels.grid_size();
+		size_t upper = next_pow2(std::max(num_voxels[0], std::max(num_voxels[1], num_voxels[2])));
+		size_t upper3 = upper * upper * upper;
+
+		std::cout << upper << std::endl;
+
+		GEO::index_t prev_facet = GEO::NO_FACET;
+		double sq_dist = std::numeric_limits<double>::max();
+		GEO::vec3 nearest_point;
+		#pragma omp parallel for private(prev_facet, sq_dist, nearest_point)
+		for (size_t idx = 0; idx < upper3; ++idx) {
+			if (omp_get_thread_num() == 0) {
+				task.progress((int) (100.0 * idx / upper3 * omp_get_num_threads()));
+			}
+
+			Vec3i vox = morton_to_index3(idx);
+			if (vox[0] >= num_voxels[0] || vox[1] >= num_voxels[1] || vox[2] >= num_voxels[2]) {
+				continue;
+			}
+			GEO::vec3 query = voxels.voxel_center(vox[0], vox[1], vox[2]);
+			if (prev_facet != GEO::NO_FACET) {
+				GEO::get_point_facet_nearest_point(M, query, prev_facet, nearest_point, sq_dist);
+			}
+			aabb_tree.nearest_facet_with_hint(query, prev_facet, nearest_point, sq_dist);
+			voxels.at(voxels.index_from_index3(vox)) = (float) std::sqrt(sq_dist);
+		}
+
+
+	#endif
 
 	} catch(const GEO::TaskCanceled&) {
 		// Do early cleanup
 	}
 }
+
 ////////////////////////////////////////////////////////////////////////////////
 
 // calculate twice signed area of triangle (0,0)-(x1,y1)-(x2,y2)
