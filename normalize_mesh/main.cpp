@@ -87,6 +87,7 @@ int main(int argc, char** argv) {
 	GEO::CmdLine::import_arg_group("pre");
 	GEO::CmdLine::declare_arg("extent", 1.0, "Maximum physical extent (in mm)");
 	GEO::CmdLine::declare_arg("com", false, "Normalize around center of mass instead of min-corner");
+	GEO::CmdLine::declare_arg("barycenter", false, "Normalize around barycenter instead of min-corner");
 
 	// Parse command line options and filenames
 	std::vector<std::string> filenames;
@@ -96,6 +97,7 @@ int main(int argc, char** argv) {
 
 	double target_extent = GEO::CmdLine::get_arg_double("extent");
 	bool use_com = GEO::CmdLine::get_arg_bool("com");
+	bool use_bary = GEO::CmdLine::get_arg_bool("barycenter");
 
 	// Default output filename is "output" if unspecified
 	if (filenames.size() == 1) {
@@ -136,6 +138,9 @@ int main(int argc, char** argv) {
 	GEO::vec3 origin = min_corner;
 	if (use_com) {
 		origin = centerOfMass(M);
+	}
+	if (use_bary) {
+		origin = 0.5 * (min_corner + max_corner);
 	}
 	for (int v = 0; v < M.vertices.nb(); ++v) {
 		M.vertices.point(v) = target_extent * (M.vertices.point(v) - origin) / scaling;
