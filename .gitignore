@@ -45,25 +45,6 @@
 # Extra directories
 .vscode/
 build/
-latex.out/
-3rdparty/eigen
-3rdparty/geogram
+3rdparty/
 Win32
 x64
-yimg.dir
-
-# Config stuff
-*.ini
-
-# Latex stuff
-*.bbl
-*.blg
-*.log
-*.out
-*.pdf
-*.aux
-*.synctex.gz
-*.fdb_latexmk
-*.fls
-*.run.xml
-*-blx.bib

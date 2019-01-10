@@ -2,28 +2,19 @@
 # Find Geogram and build it as part of the current build
 ################################################################################
 
-if(TARGET geogram)
+if(TARGET geogram::geogram)
 	return()
 endif()
 
 ################################################################################
 
-if(THIRD_PARTY_DIR)
-	set(GEOGRAM_SEARCH_PATHS ${THIRD_PARTY_DIR})
-else()
-	set(GEOGRAM_SEARCH_PATHS
-		${GEOGRAM_INSTALL_PREFIX}
-		"$ENV{GEOGRAM_INSTALL_PREFIX}"
-		"/usr/local/"
-		"$ENV{PROGRAMFILES}/Geogram"
-		"$ENV{PROGRAMW6432}/Geogram"
-		"$ENV{HOME}/.local/")
-endif()
+message("Search path: ${GEOGRAM_SEARCH_PATHS}")
 
 find_path(GEOGRAM_SOURCE_INCLUDE_DIR
-		geogram/basic/common.h
-		PATHS ${GEOGRAM_SEARCH_PATHS}
-		PATH_SUFFIXES geogram/src/lib
+	geogram/basic/common.h
+	PATHS ${GEOGRAM_SEARCH_PATHS}
+	PATH_SUFFIXES src/lib
+	NO_DEFAULT_PATH
 )
 
 set(GEOGRAM_ROOT ${GEOGRAM_SOURCE_INCLUDE_DIR}/../..)
@@ -39,9 +30,9 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 	set(VORPALINE_PLATFORM Darwin-clang-dynamic CACHE STRING "" FORCE)
 endif()
 
-option(GEOGRAM_WITH_GRAPHICS "Viewers and geogram_gfx library" OFF)
+option(GEOGRAM_WITH_GRAPHICS "Viewers and geogram_gfx library" ON)
 option(GEOGRAM_WITH_LEGACY_NUMERICS "Legacy numerical libraries" OFF)
-option(GEOGRAM_WITH_HLBFGS "Non-linear solver (Yang Liu's HLBFGS)" OFF)
+option(GEOGRAM_WITH_HLBFGS "Non-linear solver (Yang Liu's HLBFGS)" ON)
 option(GEOGRAM_WITH_TETGEN "Tetrahedral mesher (Hang Si's TetGen)" OFF)
 option(GEOGRAM_WITH_TRIANGLE "Triangle mesher (Jonathan Shewchuk's triangle)" OFF)
 option(GEOGRAM_WITH_EXPLORAGRAM "Experimental code (hexahedral meshing vpipeline and optimal transport)" OFF)
@@ -60,11 +51,11 @@ target_include_directories(geogram SYSTEM PUBLIC ${GEOGRAM_SOURCE_INCLUDE_DIR})
 if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 	# remove warning for multiply defined symbols (caused by multiple
 	# instanciations of STL templates)
-	target_compile_options(geogram INTERFACE /wd4251)
+	#target_compile_options(geogram INTERFACE /wd4251)
 
 	# remove all unused stuff from windows.h
-	target_compile_definitions(geogram INTERFACE -DWIN32_LEAN_AND_MEAN)
-	target_compile_definitions(geogram INTERFACE -DVC_EXTRALEAN)
+	# target_compile_definitions(geogram INTERFACE -DWIN32_LEAN_AND_MEAN)
+	# target_compile_definitions(geogram INTERFACE -DVC_EXTRALEAN)
 
 	# do not define a min() and a max() macro, breaks
 	# std::min() and std::max() !!
@@ -82,3 +73,8 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 		endforeach()
 	endif()
 endif()
+
+################################################################################
+
+add_library(geogram::geogram ALIAS geogram)
+add_library(geogram::geogram_gfx ALIAS geogram_gfx)
