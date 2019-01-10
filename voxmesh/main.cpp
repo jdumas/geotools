@@ -350,7 +350,7 @@ void compute_sign(const GEO::Mesh &M,
 		const GEO::vec3 origin = voxels.origin();
 		const double spacing = voxels.spacing();
 
-		GEO::parallel_for([&](int y) {
+		GEO::parallel_for(0, size[1], [&](int y) {
 			if (GEO::Thread::current()->id() == 0) {
 				task.progress((int) (100.0 * y / size[1] * GEO::Process::number_of_cores()));
 			}
@@ -382,7 +382,7 @@ void compute_sign(const GEO::Mesh &M,
 					voxels.at(idx) = T(s < 0 ? 1 : 0);
 				}
 			}
-		}, 0, size[1]);
+		});
 	} catch(const GEO::TaskCanceled&) {
 		// Do early cleanup
 	}
@@ -405,7 +405,7 @@ void compute_sign(const GEO::Mesh &M,
 		const GEO::vec3 origin = dexels.origin();
 		const double spacing = dexels.spacing();
 
-		GEO::parallel_for([&](int y) {
+		GEO::parallel_for(0, size[1], [&](int y) {
 			if (GEO::Thread::current()->id() == 0) {
 				// task.progress((int) (100.0 * y / size[1] * GEO::Process::number_of_cores()));
 			}
@@ -441,7 +441,7 @@ void compute_sign(const GEO::Mesh &M,
 				dexels.at(x, y).resize(reduced.size());
 				std::copy_n(reduced.begin(), reduced.size(), dexels.at(x, y).begin());
 			}
-		}, 0, size[1]);
+		});
 	} catch(const GEO::TaskCanceled&) {
 		// Do early cleanup
 	}
@@ -462,7 +462,7 @@ void compute_sign(const GEO::Mesh &M, const GEO::MeshFacetsAABB &aabb_tree,
 		GEO::vec3 min_corner, max_corner;
 		GEO::get_bbox(M, &min_corner[0], &max_corner[0]);
 
-		GEO::parallel_for([&](int cellId) {
+		GEO::parallel_for(0, octree.numCells(), [&](int cellId) {
 			auto cell_xyz_min = octree.cellCornerPos(cellId, OctreeGrid::CORNER_X0_Y0_Z0);
 			auto extent = octree.cellExtent(cellId);
 
@@ -506,7 +506,7 @@ void compute_sign(const GEO::Mesh &M, const GEO::MeshFacetsAABB &aabb_tree,
 			if (num_before % 2 == 1) {
 				inside(cellId) = 1.0;
 			}
-		}, 0, octree.numCells());
+		});
 	} catch(const GEO::TaskCanceled&) {
 		// Do early cleanup
 	}

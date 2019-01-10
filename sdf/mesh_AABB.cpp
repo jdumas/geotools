@@ -13,7 +13,7 @@
  *  * Neither the name of the ALICE Project-Team nor the names of its
  *  contributors may be used to endorse or promote products derived from this
  *  software without specific prior written permission.
- * 
+ *
  *  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
  *  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  *  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
@@ -36,9 +36,9 @@
  *     http://www.loria.fr/~levy
  *
  *     ALICE Project
- *     LORIA, INRIA Lorraine, 
+ *     LORIA, INRIA Lorraine,
  *     Campus Scientifique, BP 239
- *     54506 VANDOEUVRE LES NANCY CEDEX 
+ *     54506 VANDOEUVRE LES NANCY CEDEX
  *     FRANCE
  *
  */
@@ -50,7 +50,7 @@
 #include <geogram/numerics/predicates.h>
 #include <geogram/basic/geometry_nd.h>
 
-#ifdef __SSE2__ 
+#ifdef __SSE2__
 #include <emmintrin.h>
 #endif
 
@@ -132,7 +132,7 @@ namespace {
             }
         }
     }
-    
+
     /**
      * \brief Computes the maximum node index in a subtree
      * \param[in] node_index node index of the root of the subtree
@@ -166,7 +166,7 @@ namespace {
      * \param[in] get_bbox a function that computes the bbox of an element
      * \tparam GET_BBOX a function (or a functor) with the following arguments:
      *  - mesh: a const reference to the mesh
-     *  - box: a reference where the computed bounding box of the element 
+     *  - box: a reference where the computed bounding box of the element
      *   will be stored
      *  - element: the index of the element
      */
@@ -298,7 +298,7 @@ namespace {
      * \param[in] t the index of the tetrahedron in \p M
      * \param[in] p a const reference to the point
      * \param[in] exact specifies whether exact predicates should be used
-     * \retval true if the tetrahedron \p t or its boundary contains 
+     * \retval true if the tetrahedron \p t or its boundary contains
      *  the point \p p
      * \retval false otherwise
      */
@@ -385,7 +385,7 @@ namespace {
 
 
 	// Normal vector of the triangle
-	
+
 	vec3 N = cross(p2-p1,p3-p1);
 
 	// Plane equation: dot(N,p) = dot(N,p1)
@@ -399,8 +399,8 @@ namespace {
 	}
 
 	double t = (dot(p1,N) - dot(q1,N)) / denom;
-	      
-	
+
+
 	if(t < 0.0 || t > 1.0 || t > nearest_t) {
 	    return false;
 	}
@@ -408,7 +408,7 @@ namespace {
 	return true;
     }
 
-    
+
     /**
      * \brief Tests whether there is an intersection between a segment
      *  and a mesh facet.
@@ -483,7 +483,7 @@ namespace {
     // https://tavianator.com/fast-branchless-raybounding-box-intersections-part-2-nans/
     // http://www.flipcode.com/archives/SSE_RayBox_Intersection_Test.shtml
     // http://psgraphics.blogspot.com/2016/02/ray-box-intersection-and-fmin.html
-    
+
     /**
      * \brief Tests whether a segment intersects a box.
      * \param[in] q1 the first extremity of the segment.
@@ -503,16 +503,16 @@ namespace {
 	// (tz1, tz2) : parameters of intersection with slab {zmin <= z <= zmax}
 	//   (note: they are unordered, it is possible that tx1 > tx2)
 	// This defines three intervals:
-	//  Ix = [ min(tx1,tx2) ... max(tx1,tx2) ] 
-	//  Iy = [ min(ty1,ty2) ... max(ty1,ty2) ] 
+	//  Ix = [ min(tx1,tx2) ... max(tx1,tx2) ]
+	//  Iy = [ min(ty1,ty2) ... max(ty1,ty2) ]
 	//  Iz = [ min(tz1,tz2) ... max(tz1,tz2) ]
 	// The intersection between [q1,q2] and the slab {xmin <= x <= xmax} is
 	//  the set of points {q1 + t(q2-q1)} where t in Ix
-	
+
         // Q: what does it do if one of the fracs is zero ?
 	//   normally the tests with inf do what they should
 	//   (to be tested)
-	
+
 	double tx1 = dirinv.x*(box.xyz_min[0] - q1.x);
 	double tx2 = dirinv.x*(box.xyz_max[0] - q1.x);
 
@@ -522,22 +522,22 @@ namespace {
 	double tz1 = dirinv.z*(box.xyz_min[2] - q1.z);
 	double tz2 = dirinv.z*(box.xyz_max[2] - q1.z);
 
-	// now compute the intersection of the three intervals 
+	// now compute the intersection of the three intervals
 	//      Ix /\ Iy /\ Iz
 	//   this gives us the range of t that corresponds to points in the
 	//   box (because the box is the intersection of the 3 slabs)
 	// it starts at the maximum of the left bounds of the 3 intervals
 	// it stops at the minimum of the right bounds of the 3 intervals
-	
+
 	double tmin =
 	    max3(std::min(tx1,tx2), std::min(ty1,ty2), std::min(tz1,tz2));
-	
+
 	double tmax =
-	    min3(std::max(tx1,tx2), std::max(ty1,ty2), std::max(tz1,tz2));	
+	    min3(std::max(tx1,tx2), std::max(ty1,ty2), std::max(tz1,tz2));
 
 	// There is no intersection if the interval is empty (tmin > tmax)
 	// or if the interval is outside [0,1]
-	
+
 	return (tmax >= 0.0) && (tmin < tmax) && (tmin <= 1.0);
     }
 
@@ -714,7 +714,7 @@ namespace GEO {
 	);
 	return (f != index_t(-1));
     }
-    
+
     void MeshFacetsAABB::segment_nearest_intersection_recursive(
 	const vec3& q1, const vec3& q2, const vec3& dirinv, index_t n, index_t b, index_t e,
 	double& t, index_t& f
@@ -732,8 +732,8 @@ namespace GEO {
 	segment_nearest_intersection_recursive(q1, q2, dirinv, childl, b, m, t, f);
 	segment_nearest_intersection_recursive(q1, q2, dirinv, childr, m, e, t, f);
     }
-    
-    
+
+
 /****************************************************************************/
 
     MeshCellsAABB::MeshCellsAABB(Mesh& M, bool reorder) : mesh_(M) {
@@ -758,13 +758,13 @@ namespace GEO {
 
     index_t MeshCellsAABB::containing_tet_recursive(
         const vec3& p, bool exact,
-        index_t n, index_t b, index_t e        
+        index_t n, index_t b, index_t e
     ) const {
 
         if(!bboxes_[n].contains(p)) {
             return NO_TET;
         }
-        
+
         if(e==b+1) {
             if(mesh_tet_contains_point(mesh_, b, p, exact)) {
                 return b;
@@ -772,7 +772,7 @@ namespace GEO {
                 return NO_TET;
             }
         }
-        
+
         index_t m = b + (e - b) / 2;
         index_t childl = 2 * n;
         index_t childr = 2 * n + 1;
@@ -785,8 +785,8 @@ namespace GEO {
         }
         return result;
     }
-    
+
 /****************************************************************************/
-        
+
 }
 

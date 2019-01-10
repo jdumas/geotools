@@ -18,9 +18,9 @@
 #include <geogram/delaunay/delaunay.h>
 #include <geogram/voronoi/RVD.h>
 #include <geogram/numerics/predicates.h>
-#include <geogram/mesh/mesh_AABB.h>
 #include <boost/compute/core.hpp>
 #include <boost/compute/container.hpp>
+#include "mesh_AABB.h"
 #include <omp.h>
 #include <set>
 #include <queue>
