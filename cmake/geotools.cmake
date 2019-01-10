@@ -4,7 +4,12 @@ list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR})
 
 if(NOT CMAKE_BUILD_TYPE)
 	message(STATUS "No build type selected, default to Release")
-	set(CMAKE_BUILD_TYPE "Release" PARENT_SCOPE)
+	get_directory_property(HAS_PARENT PARENT_DIRECTORY)
+	if(HAS_PARENT)
+		set(CMAKE_BUILD_TYPE "Release" PARENT_SCOPE)
+	else()
+		set(CMAKE_BUILD_TYPE "Release")
+	endif()
 endif()
 
 set(GEOTOOLS_EXTERNAL "${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty")

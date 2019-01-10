@@ -8,8 +8,6 @@ endif()
 
 ################################################################################
 
-message("Search path: ${GEOGRAM_SEARCH_PATHS}")
-
 find_path(GEOGRAM_SOURCE_INCLUDE_DIR
 	geogram/basic/common.h
 	PATHS ${GEOGRAM_SEARCH_PATHS}
