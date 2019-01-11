@@ -90,6 +90,11 @@ endfunction()
 function(geotools_add_executable name)
 	add_executable(${name} ${ARGN})
 	target_link_libraries(${name} colors::colors)
+
+	# Use C++11
+	target_compile_features(${name} PUBLIC cxx_std_11)
+
+	# Output folder
 	set_target_properties(${name}
 		PROPERTIES
 		RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
