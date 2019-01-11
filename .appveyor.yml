@@ -9,7 +9,7 @@ environment:
   matrix:
   - config: Debug
 before_build:
-  - cmake -DCMAKE_BUILD_TYPE=%config% -G "Visual Studio 15 2017 Win64" .
+  - cmake -DCMAKE_BUILD_TYPE=%config% -DGEOTOOLS_BUILD_ON_TRAVIS=ON -G "Visual Studio 15 2017 Win64" .
 build:
   parallel: true
   project: $(APPVEYOR_BUILD_FOLDER)\$(APPVEYOR_PROJECT_NAME).sln
