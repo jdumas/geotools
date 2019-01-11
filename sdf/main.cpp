@@ -360,7 +360,7 @@ int next_pow2(int x) {
 }
 
 Vec3i morton_to_index3(size_t x) {
-	Vec3i pos{0, 0, 0};
+	Vec3i pos{{0, 0, 0}};
 	size_t base = 1;
 	while (x) {
 		pos[0] += base * (x & 1); x >>= 1;

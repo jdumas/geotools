@@ -18,6 +18,11 @@ include(GeotoolsDownloadExternal)
 # Color output
 include(UseColors)
 
+# Warnings
+include(Warnings)
+
+################################################################################
+
 if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 	foreach(config ${CMAKE_CONFIGURATION_TYPES})
 		string(TOUPPER ${config} config)
@@ -97,7 +102,7 @@ endfunction()
 # Add executable
 function(geotools_add_executable name)
 	add_executable(${name} ${ARGN})
-	target_link_libraries(${name} colors::colors)
+	target_link_libraries(${name} colors::colors warnings::all)
 
 	# Use C++11
 	target_compile_features(${name} PUBLIC cxx_std_11)

@@ -21,6 +21,8 @@ public:
 
 public:
 	struct Domain {
+		virtual ~Domain() = default;
+
 		// The default domain is a n-dimensional box
 		virtual bool contains(vXr p, vXr extent) const {
 			for (unsigned i = 0; i < n; ++i) {

@@ -139,7 +139,7 @@ void PoissonSampling<real_t, n>::domain(
 	Grid<real_t, n> grid(m_MinDist, m_Extent);
 
 	// Initialization
-	if (not result.empty()) {
+	if (!result.empty()) {
 		// Update containers
 		for (vXr p : result) {
 			active.push_back(p);
@@ -164,7 +164,7 @@ void PoissonSampling<real_t, n>::domain(
 	}
 
 	// Main loop
-	while (not active.empty()) {
+	while (!active.empty()) {
 		int selectedIndex = Random::uniform_int<int>(0, active.size() - 1);
 		const vXr currentPoint = active[selectedIndex];
 		int i;
@@ -182,7 +182,7 @@ void PoissonSampling<real_t, n>::domain(
 			if (j == maxDomainTrials) {
 				i = maxAttempts;
 				break;
-			} else if (not grid.isNeighborhoodOccupied(newPoint)) {
+			} else if (!grid.isNeighborhoodOccupied(newPoint)) {
 				result.push_back(newPoint);
 				active.push_back(newPoint);
 				grid.insertPoint(newPoint);
@@ -217,7 +217,7 @@ void PoissonSampling<real_t, n>::contour(
 		while (minCoef < l && unsuccessfulTimes < maxContourTrials) {
 			real_t s = Random::uniform_real<real_t>(minCoef, maxCoef);
 			vXr p = s/l * a + (1 - s/l) * b;
-			if (not grid.isNeighborhoodOccupied(p)) {
+			if (!grid.isNeighborhoodOccupied(p)) {
 				unsuccessfulTimes = 0;
 				result.push_back(p);
 				grid.insertPoint(p);
@@ -250,11 +250,11 @@ void PoissonSampling<real_t, n>::subset(
 		grid.insertInitPoint(p);
 	}
 
-	while (not active.empty()) {
+	while (!active.empty()) {
 		int selectedIndex = Random::uniform_int<int>(0, active.size() - 1);
 		const vXr newPoint = active[selectedIndex];
 
-		if (not grid.isNeighborhoodOccupied(newPoint)) {
+		if (!grid.isNeighborhoodOccupied(newPoint)) {
 			result.push_back(newPoint);
 			grid.insertPoint(newPoint);
 		}
@@ -282,7 +282,7 @@ void PoissonSampling<real_t, n>::naive(
 		for (size_t i = 0; i < n; ++i) {
 			newPoint[i] = Random::get<real_t>() * m_Extent[i];
 		}
-		if (not defaultDomain.contains(newPoint, m_Extent)) {
+		if (!defaultDomain.contains(newPoint, m_Extent)) {
 			++unsuccessfulTimes;
 			continue;
 		}
