@@ -1,6 +1,8 @@
 Geogram Tools
 =============
 
+[![Build Status](https://travis-ci.com/jdumas/geotools.svg?branch=master)](https://travis-ci.com/jdumas/geotools)
+
 A collection of small utilities made using the [geogram](http://alice.loria.fr/software/geogram/doc/html/index.html) library (mostly).
 
 Compilation

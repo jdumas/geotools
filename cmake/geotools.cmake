@@ -18,6 +18,14 @@ include(GeotoolsDownloadExternal)
 # Color output
 include(UseColors)
 
+if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
+	foreach(config ${CMAKE_CONFIGURATION_TYPES})
+		string(TOUPPER ${config} config)
+		string(REPLACE /MD /MT CMAKE_C_FLAGS_${config} "${CMAKE_C_FLAGS_${config}}")
+		string(REPLACE /MD /MT CMAKE_CXX_FLAGS_${config} "${CMAKE_CXX_FLAGS_${config}}")
+	endforeach()
+endif()
+
 ################################################################################
 
 # Eigen
@@ -108,12 +116,4 @@ function(geotools_import)
 		configure_file("${__geotools_import_dir}/GeotoolsImport.cmake.in" "${__import_file}" @ONLY)
 		include("${__import_file}")
 	endforeach()
-
-	if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
-		foreach(config ${CMAKE_CONFIGURATION_TYPES})
-			string(TOUPPER ${config} config)
-			string(REPLACE /MD /MT CMAKE_C_FLAGS_${config} "${CMAKE_C_FLAGS_${config}}")
-			string(REPLACE /MD /MT CMAKE_CXX_FLAGS_${config} "${CMAKE_CXX_FLAGS_${config}}")
-		endforeach()
-	endif()
 endfunction()
